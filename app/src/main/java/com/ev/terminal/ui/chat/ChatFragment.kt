@@ -191,7 +191,7 @@ class ChatFragment : Fragment() {
                         val gguf = supervisor.ggufDownloader
                         val ctx = requireContext()
                         val libDir = ctx.applicationInfo.nativeLibraryDir
-                        val cli = File(libDir, "llama-cli")
+                        val cli = File(libDir, "libllama-cli.so")
                         val model = File(ctx.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf")
                         appendEv("MODEL\n\n" +
                             "STATE\n$state\n\n" +

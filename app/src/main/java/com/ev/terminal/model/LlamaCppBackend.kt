@@ -11,21 +11,32 @@ class LlamaCppBackend(
 
     private var process: Process? = null
     private var loaded = false
+    private var cliBin: File? = null
 
-    private fun nativeLibDir(): File {
-        val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" } ?: "arm64-v8a"
-        return File(context.applicationInfo.nativeLibraryDir)
-    }
+    private fun nativeLibDir(): File =
+        File(context.applicationInfo.nativeLibraryDir)
 
     private fun modelFile(): File = File(context.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf")
+
+    private fun cliFile(): File {
+        cliBin?.let { if (it.exists()) return it }
+        val src = File(nativeLibDir(), "libllama-cli.so")
+        val dst = File(context.filesDir, "llama-cli")
+        if (!dst.exists() || dst.length() != src.length()) {
+            src.copyTo(dst, overwrite = true)
+        }
+        dst.setExecutable(true, false)
+        cliBin = dst
+        return dst
+    }
 
     override suspend fun load() {
         withContext(Dispatchers.IO) {
             val model = modelFile()
             if (!model.exists()) throw RuntimeException("model file not found: ${model.absolutePath}")
-            val cli = File(nativeLibDir(), "llama-cli")
-            if (!cli.exists()) throw RuntimeException("llama-cli not found")
-            cli.setExecutable(true)
+            val cli = cliFile()
+            if (!cli.exists()) throw RuntimeException("llama-cli not found in ${nativeLibDir()}")
+            cli.setExecutable(true, false)
             loaded = true
         }
     }
@@ -33,7 +44,8 @@ class LlamaCppBackend(
     override suspend fun generate(request: ModelRequest): ModelResponse {
         return withContext(Dispatchers.IO) {
             val start = System.currentTimeMillis()
-            val cli = File(nativeLibDir(), "llama-cli")
+            val cli = cliFile()
+            cli.setExecutable(true, false)
             val model = modelFile()
             val prompt = if (request.system.isNotBlank()) {
                 "${request.system}\n\n${request.prompt}"
