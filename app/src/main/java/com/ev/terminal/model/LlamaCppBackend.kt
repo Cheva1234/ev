@@ -70,25 +70,40 @@ class LlamaCppBackend(
                 "-n", request.maxTokens.toString(),
                 "--temp", request.temperature.toString(),
                 "--top-p", request.topP.toString(),
-                "-c", "4096",
+                "-c", "2048",
                 "-st",
-                "-t", "4"
+                "-t", "4",
+                "--no-warmup"
             )
-            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens}")
+            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens} -c 2048")
             val pb = ProcessBuilder(cmd)
             pb.redirectErrorStream(true)
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
-            val output = proc.inputStream.bufferedReader().use { it.readText() }
-            val exit = proc.waitFor()
+            val output = StringBuilder()
+            val reader = proc.inputStream.bufferedReader()
+            var line: String?
+            val maxOutputChars = 65536
+            while (reader.readLine().also { line = it } != null) {
+                if (output.length + (line?.length ?: 0) < maxOutputChars) {
+                    output.appendLine(line)
+                }
+                Log.i("EV_MODEL", "llama-cli: ${line?.take(120)}")
+            }
+            reader.close()
+            val exit = proc.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)
             process = null
-            Log.i("EV_MODEL", "llama-cli exited $exit, output length=${output.length}")
-            if (exit != 0) {
-                throw RuntimeException("llama-cli exited $exit: ${output.take(300)}")
+            if (!exit) {
+                proc.destroyForcibly()
+                throw RuntimeException("llama-cli timed out (120s)")
+            }
+            Log.i("EV_MODEL", "llama-cli exited ${proc.exitValue()}, output length=${output.length}")
+            if (proc.exitValue() != 0) {
+                throw RuntimeException("llama-cli exited ${proc.exitValue()}: ${output.take(300)}")
             }
             val durationMs = System.currentTimeMillis() - start
-            val text = parseOutput(output)
+            val text = parseOutput(output.toString())
             Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
             ModelResponse(
                 text = text,
