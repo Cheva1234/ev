@@ -189,12 +189,23 @@ class ChatFragment : Fragment() {
         appendUser(text)
         lifecycleScope.launch {
             val outcome: TaskOutcome? = try {
-                runtime.taskManager.runEvcl(text)
+                if (text.trim().startsWith("@")) {
+                    runtime.taskManager.runEvcl(text)
+                } else {
+                    runtime.fastPath.tryResolve(text)?.let { result ->
+                        TaskOutcome(
+                            taskId = runtime.state.nextTask(),
+                            family = result.family,
+                            result = result,
+                            durationMs = result.durationMs
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 null
             }
             if (outcome == null) {
-                appendEv("No tool matched that request. Try /tools or /help.")
+                appendEv("LFM2.5 is not loaded. This request needs reasoning — the model backend is not connected yet.\n\nTry a direct tool command, e.g. @math 84*9.81, or /help.")
             } else {
                 appendTool(outcome)
                 appendEv(evAnswer(outcome))
