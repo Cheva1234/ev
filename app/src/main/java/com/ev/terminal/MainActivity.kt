@@ -26,7 +26,7 @@ class MainActivity : AppCompatActivity() {
             showFragment(ChatFragment())
         }
 
-        if (!runtime.settings.modelDownloaded) {
+        if (!runtime.modelSupervisor.isInstalled()) {
             ModelSetupDialog(this, runtime).show()
         }
 

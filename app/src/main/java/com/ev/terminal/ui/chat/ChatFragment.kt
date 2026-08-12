@@ -172,8 +172,23 @@ class ChatFragment : Fragment() {
                 appendEv(toolsText())
             }
             "/model" -> {
-                val m = runtime.state.model.value
-                appendEv("MODEL\n\n${m.name}\n${m.quant}\n\nSTATE\n${m.state}\n\nCONTEXT\n${m.contextUsed} / ${m.contextMax}")
+                when (command) {
+                    "/model load" -> {
+                        val supervisor = runtime.modelSupervisor
+                        if (supervisor.isInstalled()) {
+                            appendEv("Model already installed.")
+                        } else {
+                            appendEv("Opening model setup...")
+                            com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
+                        }
+                    }
+                    else -> {
+                        val m = runtime.state.model.value
+                        val supervisor = runtime.modelSupervisor
+                        val state = supervisor.state.value
+                        appendEv("MODEL\n\n${m.name}\n${m.quant}\n\nSTATE\n$state\n\nBACKEND\nOn-device (llama.cpp)\n\nTo install the model, run: /model load")
+                    }
+                }
             }
             "/memory" -> {
                 val mem = runtime.state.memory.value
@@ -205,7 +220,10 @@ class ChatFragment : Fragment() {
                 null
             }
             if (outcome == null) {
-                appendEv("LFM2.5 is not loaded. This request needs reasoning — the model backend is not connected yet.\n\nTry a direct tool command, e.g. @math 84*9.81, or /help.")
+                appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
+                if (!text.trim().startsWith("@")) {
+                    com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
+                }
             } else {
                 appendTool(outcome)
                 appendEv(evAnswer(outcome))
