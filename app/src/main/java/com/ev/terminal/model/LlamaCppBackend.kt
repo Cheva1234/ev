@@ -27,15 +27,11 @@ class LlamaCppBackend(
             throw RuntimeException("libllama-cli.so not found in nativeLibraryDir=${nativeLibDir().absolutePath}")
         }
         Log.i("EV_MODEL", "nativeLibraryDir=${nativeLibDir().absolutePath}")
-        Log.i("EV_MODEL", "cli src=${src.absolutePath}, exists=${src.exists()}, size=${src.length()}")
-        val dst = File(context.filesDir, "llama-cli")
-        if (!dst.exists() || dst.length() != src.length()) {
-            src.copyTo(dst, overwrite = true)
-        }
-        dst.setExecutable(true, false)
-        Log.i("EV_MODEL", "cli dst=${dst.absolutePath}, exists=${dst.exists()}, size=${dst.length()}, exec=${dst.canExecute()}")
-        cliBin = dst
-        return dst
+        Log.i("EV_MODEL", "cli=${src.absolutePath}, exists=${src.exists()}, size=${src.length()}")
+        src.setExecutable(true, false)
+        Log.i("EV_MODEL", "cli exec=${src.canExecute()}")
+        cliBin = src
+        return src
     }
 
     override suspend fun load() {
