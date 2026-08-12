@@ -48,9 +48,7 @@ class LlamaCppBackend(
                 "--temp", request.temperature.toString(),
                 "--top-p", request.topP.toString(),
                 "-c", "4096",
-                "--no-display-prompt",
-                "--no-conversation",
-                "--simple-io",
+                "-st",
                 "-t", "4"
             )
             val pb = ProcessBuilder(cmd)
@@ -64,13 +62,24 @@ class LlamaCppBackend(
                 throw RuntimeException("llama-cli exited $exit: ${output.take(200)}")
             }
             val durationMs = System.currentTimeMillis() - start
-            val text = output.trim()
+            val text = parseOutput(output)
             ModelResponse(
                 text = text,
                 durationMs = durationMs,
                 tokPerSec = if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0
             )
         }
+    }
+
+    private fun parseOutput(output: String): String {
+        var text = output
+        if (text.contains("[End thinking]")) {
+            text = text.substringAfterLast("[End thinking]")
+        }
+        text = text.substringBefore("[ Prompt:")
+        text = text.substringBefore("Exiting...")
+        text = text.replace(Regex("\\[Start thinking\\].*?\\[End thinking\\]", RegexOption.DOT_MATCHES_ALL), "")
+        return text.trim()
     }
 
     override suspend fun unload() {
