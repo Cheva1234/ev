@@ -49,6 +49,15 @@ class EVRuntime private constructor(context: Context) {
                         currentMb = sample.usedMb
                     )
                 )
+                eventBus.emit("ram", "used_mb" to sample.usedMb)
+            }
+        }
+        scope.launch {
+            memoryMonitor.sampleLoop(context)
+        }
+        scope.launch {
+            eventBus.events.collect { event ->
+                logger.log(event)
             }
         }
         eventBus.emit("runtime_start", "session" to state.sessionId.value)

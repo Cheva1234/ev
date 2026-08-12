@@ -1,6 +1,5 @@
 package com.ev.terminal.ui.chat
 
-import android.text.SpannableStringBuilder
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -63,9 +62,10 @@ class ChatAdapter(
                     label.visibility = View.VISIBLE
                     label.text = "EV:"
                     label.setTextColor(itemView.context.getColor(R.color.ev_cyan))
-                    body.text = MarkdownRenderer.render(entry.text, itemView.context)
-                    MathRenderer.renderInline(body.text as SpannableStringBuilder, itemView.context)
-                    MathRenderer.renderBlock(body.text as SpannableStringBuilder, itemView.context)
+                    val rendered = MarkdownRenderer.render(entry.text, itemView.context)
+                    MathRenderer.renderInline(rendered, itemView.context)
+                    MathRenderer.renderBlock(rendered, itemView.context)
+                    body.text = rendered
                     body.setTextColor(itemView.context.getColor(R.color.ev_off_white))
                     trace.visibility = View.GONE
                 }

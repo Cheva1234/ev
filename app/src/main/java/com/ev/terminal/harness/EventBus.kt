@@ -30,7 +30,7 @@ data class EvEvent(
 }
 
 class EventBus {
-    private val _events = MutableSharedFlow<EvEvent>(extraBufferCapacity = 512)
+    private val _events = MutableSharedFlow<EvEvent>(replay = 200, extraBufferCapacity = 512)
     val events: SharedFlow<EvEvent> = _events.asSharedFlow()
 
     fun emit(event: EvEvent) {
