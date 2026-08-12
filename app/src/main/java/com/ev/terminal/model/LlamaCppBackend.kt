@@ -3,8 +3,47 @@ package com.ev.terminal.model
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
+
+private const val MAX_PROCESS_OUTPUT_CHARS = 65536
+private const val PROCESS_TIMEOUT_MS = 120000L
+
+/**
+ * Captures process output without assuming that the child writes newline-delimited text.
+ *
+ * llama-cli can stream generated tokens as one very long line. Reading with readLine()
+ * would therefore allocate the whole response before a size limit can be applied.
+ */
+internal fun collectProcessOutput(input: InputStream, maxChars: Int): String {
+    require(maxChars > 0) { "maxChars must be positive" }
+
+    val output = StringBuilder(minOf(maxChars, 8192))
+    val buffer = ByteArray(8192)
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+
+        if (output.length < maxChars && count > 0) {
+            val remaining = maxChars - output.length
+            val chunk = String(
+                buffer,
+                0,
+                minOf(count, remaining),
+                StandardCharsets.UTF_8
+            )
+            output.append(chunk)
+        }
+        // Continue draining after the cap so llama-cli cannot block on a full pipe.
+    }
+    return output.toString()
+}
 
 class LlamaCppBackend(
     private val context: Context
@@ -81,35 +120,36 @@ class LlamaCppBackend(
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
-            val output = StringBuilder()
-            val reader = proc.inputStream.bufferedReader()
-            var line: String?
-            val maxOutputChars = 65536
-            while (reader.readLine().also { line = it } != null) {
-                if (output.length + (line?.length ?: 0) < maxOutputChars) {
-                    output.appendLine(line)
+            val outputJob = async(Dispatchers.IO) {
+                proc.inputStream.use { input ->
+                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS)
                 }
-                Log.i("EV_MODEL", "llama-cli: ${line?.take(120)}")
             }
-            reader.close()
-            val exit = proc.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)
-            process = null
-            if (!exit) {
-                proc.destroyForcibly()
-                throw RuntimeException("llama-cli timed out (120s)")
+            try {
+                val output = withTimeout(PROCESS_TIMEOUT_MS) { outputJob.await() }
+                val exited = proc.waitFor(5, TimeUnit.SECONDS)
+                if (!exited) {
+                    throw RuntimeException("llama-cli did not exit after closing output")
+                }
+                Log.i("EV_MODEL", "llama-cli exited ${proc.exitValue()}, output length=${output.length}")
+                if (proc.exitValue() != 0) {
+                    throw RuntimeException("llama-cli exited ${proc.exitValue()}: ${output.take(300)}")
+                }
+                val durationMs = System.currentTimeMillis() - start
+                val text = parseOutput(output)
+                Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
+                ModelResponse(
+                    text = text,
+                    durationMs = durationMs,
+                    tokPerSec = if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0
+                )
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                throw RuntimeException("llama-cli timed out (${PROCESS_TIMEOUT_MS / 1000}s)", e)
+            } finally {
+                if (proc.isAlive) proc.destroyForcibly()
+                outputJob.cancelAndJoin()
+                process = null
             }
-            Log.i("EV_MODEL", "llama-cli exited ${proc.exitValue()}, output length=${output.length}")
-            if (proc.exitValue() != 0) {
-                throw RuntimeException("llama-cli exited ${proc.exitValue()}: ${output.take(300)}")
-            }
-            val durationMs = System.currentTimeMillis() - start
-            val text = parseOutput(output.toString())
-            Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
-            ModelResponse(
-                text = text,
-                durationMs = durationMs,
-                tokPerSec = if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0
-            )
         }
     }
 
