@@ -125,9 +125,10 @@ class LlamaCppBackend(
                 "-c", "2048",
                 "-st",
                 "-t", "4",
-                "--no-warmup"
+                "--no-warmup",
+                "--reasoning-budget", "0"
             )
-            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens} -c 2048")
+            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens} -c 2048 --reasoning-budget 0")
             val pb = ProcessBuilder(cmd)
             pb.redirectErrorStream(true)
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath

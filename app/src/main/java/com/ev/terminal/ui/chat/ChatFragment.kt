@@ -17,6 +17,9 @@ import com.ev.terminal.harness.TaskOutcome
 import com.ev.terminal.storage.ChatEntry
 import com.ev.terminal.tools.ToolStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -36,6 +39,10 @@ class ChatFragment : Fragment() {
     private var liveEntryIndex: Int? = null
     private val liveRaw = StringBuilder()
     private var lastLiveUpdateMs = 0L
+    private var spinnerJob: Job? = null
+    private var spinnerFrame = 0
+    private var liveLabel = "THINKING"
+    private val spinnerFrames = listOf("|", "/", "—", "\\")
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -195,7 +202,6 @@ class ChatFragment : Fragment() {
                     else -> {
                         val supervisor = runtime.modelSupervisor
                         val state = supervisor.state.value
-                        val gguf = supervisor.ggufDownloader
                         val ctx = requireContext()
                         val libDir = ctx.applicationInfo.nativeLibraryDir
                         val cli = File(libDir, "libllama-cli.so")
@@ -224,7 +230,6 @@ class ChatFragment : Fragment() {
         taskRunning = true
         binding.sendBtn.isEnabled = false
         lifecycleScope.launch {
-            var errorMsg: String? = null
             try {
                 val outcome: TaskOutcome? = if (text.trim().startsWith("@")) {
                     runtime.taskManager.runEvcl(text)
@@ -249,7 +254,7 @@ class ChatFragment : Fragment() {
                     }
                 }
             } catch (e: Exception) {
-                errorMsg = e.message ?: e.toString()
+                val errorMsg = e.message ?: e.toString()
                 val errorText = "MODEL ERROR\n\n$errorMsg\n\nCheck CONSOLE for details. Run /model for status."
                 if (liveEntryIndex != null) finishLiveStream(errorText) else appendEv(errorText)
             } finally {
@@ -268,16 +273,28 @@ class ChatFragment : Fragment() {
     private fun startLiveStream() {
         liveRaw.clear()
         lastLiveUpdateMs = 0L
-        val entry = ChatUiEntry("EV", "THINKING…")
+        liveLabel = "THINKING"
+        spinnerFrame = 0
+        spinnerJob?.cancel()
+        val entry = ChatUiEntry("EV", "| THINKING…")
         entries.add(entry)
         liveEntryIndex = entries.lastIndex
         adapter.append(entry)
         scrollToBottom()
+        spinnerJob = lifecycleScope.launch {
+            while (isActive && liveEntryIndex != null) {
+                updateLiveEntry(livePreview())
+                spinnerFrame = (spinnerFrame + 1) % spinnerFrames.size
+                delay(180L)
+            }
+        }
     }
 
     private fun resetLiveStream(label: String) {
         liveRaw.clear()
         lastLiveUpdateMs = 0L
+        liveLabel = label.removeSuffix("…").uppercase()
+        spinnerFrame = 0
         updateLiveEntry(label)
     }
 
@@ -292,21 +309,22 @@ class ChatFragment : Fragment() {
 
     private fun livePreview(): String {
         val raw = liveRaw.toString()
+        val indicator = spinnerFrames[spinnerFrame]
         val endThinking = raw.lastIndexOf("[End thinking]")
         if (endThinking >= 0) {
             val answer = raw.substring(endThinking + "[End thinking]".length)
                 .substringBefore("[ Prompt:")
                 .substringBefore("Exiting...")
                 .trim()
-            if (answer.isNotEmpty()) return answer
+            if (answer.isNotEmpty()) return "$indicator $liveLabel…\n\n$answer"
         }
 
         val startThinking = raw.lastIndexOf("[Start thinking]")
         if (startThinking >= 0) {
             val thinking = raw.substring(startThinking + "[Start thinking]".length).trim()
-            return "THINKING…\n\n${thinking.takeLast(4096)}".trim()
+            return "$indicator THINKING…\n\n${thinking.takeLast(4096)}".trim()
         }
-        return "GENERATING…\n\n${raw.takeLast(4096)}".trim()
+        return "$indicator $liveLabel…\n\n${raw.takeLast(4096)}".trim()
     }
 
     private fun updateLiveEntry(text: String) {
@@ -319,6 +337,8 @@ class ChatFragment : Fragment() {
 
     private fun finishLiveStream(text: String) {
         val index = liveEntryIndex ?: return
+        spinnerJob?.cancel()
+        spinnerJob = null
         val finalText = text.trim().ifBlank { "(model returned no visible text)" }
         val updated = entries[index].copy(text = finalText)
         entries[index] = updated
@@ -336,10 +356,11 @@ class ChatFragment : Fragment() {
         withContext(Dispatchers.Main.immediate) { startLiveStream() }
         val stream: suspend (String) -> Unit = { chunk -> streamChunk(chunk) }
 
-        val commandSystem = "You are EV, a phone-native operational assistant. " +
+        val commandSystem = "Classify the user request. " +
             "Reply with exactly one EVCL command if a tool can help, otherwise reply with exactly NONE. " +
             "EVCL commands: @math <expr>, @time now, @weather <op> \"<loc>\", " +
-            "@web search \"<query>\", @mail latest, @loc current. No other text.\n\n" +
+            "@web search \"<query>\", @mail latest, @loc current. " +
+            "Output one line only. Do not explain, plan, count words, or show reasoning.\n\n" +
             "Examples:\n" +
             "User: differentiate x^2*sin(x)\nEVCL: @math diff(x^2*sin(x),x)\n" +
             "User: what is 84*9.81\nEVCL: @math 84*9.81\n" +
@@ -349,8 +370,8 @@ class ChatFragment : Fragment() {
             "User: check my email\nEVCL: @mail latest\n" +
             "User: hello\nEVCL: NONE"
 
-        val answerSystem = "You are EV, a phone-native operational assistant. " +
-            "Answer the user's request directly in under 30 words. No commands, no explanations."
+        val answerSystem = "Answer the user's request directly in one or two short sentences. " +
+            "Do not show thinking, planning, analysis, or word counts. No commands."
 
         val commandText = extractEvcl(
             supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 200, onChunk = stream).text
