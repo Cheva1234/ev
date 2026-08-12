@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ev_black">#000000</color>
+    <color name="ev_off_white">#E6E6E6</color>
+    <color name="ev_gray">#8A8A8A</color>
+    <color name="ev_gray_dim">#4D4D4D</color>
+    <color name="ev_cyan">#00E5FF</color>
+    <color name="ev_green">#00E676</color>
+    <color name="ev_amber">#FFC400</color>
+    <color name="ev_red">#FF5252</color>
+    <color name="ev_white">#FFFFFF</color>
+</resources>

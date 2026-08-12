@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EV" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/ev_black</item>
+        <item name="android:statusBarColor">@color/ev_black</item>
+        <item name="android:navigationBarColor">@color/ev_black</item>
+        <item name="android:textColor">@color/ev_off_white</item>
+        <item name="colorPrimary">@color/ev_cyan</item>
+        <item name="colorOnPrimary">@color/ev_black</item>
+        <item name="colorSecondary">@color/ev_green</item>
+        <item name="colorOnSecondary">@color/ev_black</item>
+        <item name="colorSurface">@color/ev_black</item>
+        <item name="colorOnSurface">@color/ev_off_white</item>
+        <item name="android:fontFamily">@font/jetbrains_mono_family</item>
+    </style>
+
+    <style name="Text.EV.Mono" parent="">
+        <item name="android:fontFamily">@font/jetbrains_mono_family</item>
+        <item name="android:textColor">@color/ev_off_white</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="Text.EV.Mono.Small" parent="Text.EV.Mono">
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="Text.EV.Mono.Dim" parent="Text.EV.Mono">
+        <item name="android:textColor">@color/ev_gray</item>
+    </style>
+
+    <style name="Text.EV.Mono.Accent" parent="Text.EV.Mono">
+        <item name="android:textColor">@color/ev_cyan</item>
+    </style>
+</resources>
