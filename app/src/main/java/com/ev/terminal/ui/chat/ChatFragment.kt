@@ -290,14 +290,6 @@ class ChatFragment : Fragment() {
         }
     }
 
-    private fun resetLiveStream(label: String) {
-        liveRaw.clear()
-        lastLiveUpdateMs = 0L
-        liveLabel = label.removeSuffix("…").uppercase()
-        spinnerFrame = 0
-        updateLiveEntry(label)
-    }
-
     private fun appendLiveChunk(chunk: String) {
         if (liveEntryIndex == null) return
         liveRaw.append(chunk)
@@ -356,48 +348,15 @@ class ChatFragment : Fragment() {
         withContext(Dispatchers.Main.immediate) { startLiveStream() }
         val stream: suspend (String) -> Unit = { chunk -> streamChunk(chunk) }
 
-        val commandSystem = "Classify the user request. " +
-            "Reply with exactly one EVCL command if a tool can help, otherwise reply with exactly NONE. " +
-            "EVCL commands: @math <expr>, @time now, @weather <op> \"<loc>\", " +
-            "@web search \"<query>\", @mail latest, @loc current. " +
-            "Output one line only. Do not explain, plan, count words, or show reasoning.\n\n" +
-            "Examples:\n" +
-            "User: differentiate x^2*sin(x)\nEVCL: @math diff(x^2*sin(x),x)\n" +
-            "User: what is 84*9.81\nEVCL: @math 84*9.81\n" +
-            "User: what time is it\nEVCL: @time now\n" +
-            "User: weather in Bangkok\nEVCL: @weather current \"Bangkok\"\n" +
-            "User: search for Formula Student rules\nEVCL: @web search \"Formula Student rules\"\n" +
-            "User: check my email\nEVCL: @mail latest\n" +
-            "User: hello\nEVCL: NONE"
-
         val answerSystem = "Answer the user's request directly in one or two short sentences. " +
             "Do not show thinking, planning, analysis, or word counts. No commands."
 
-        // This is an internal classifier. Keep its raw output out of the visible answer bubble.
-        val commandText = extractEvcl(
-            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 64).text
-        )
-        withContext(Dispatchers.Main.immediate) { resetLiveStream("ANSWERING…") }
-        if (commandText != null && commandText.startsWith("@")) {
-            val result = runtime.taskManager.runEvcl(commandText)
-            val answerPrompt = "Tool result:\n${result.result.detail}\n\n" +
-                "Answer the user's request briefly using the result."
-            val answer = stripThink(
-                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 96, onChunk = stream).text
-            )
-            withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
-            return TaskOutcome(
-                taskId = result.taskId,
-                family = result.family,
-                result = result.result.copy(summary = answer),
-                durationMs = result.durationMs,
-                responseStreamed = true
-            )
-        }
+        val start = System.currentTimeMillis()
         val answer = stripThink(
             supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 96, onChunk = stream).text
         )
         withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
+        val durationMs = System.currentTimeMillis() - start
         return TaskOutcome(
             taskId = runtime.state.nextTask(),
             family = "LFM",
@@ -407,7 +366,7 @@ class ChatFragment : Fragment() {
                 answer,
                 "LFM_RESULT\nstatus=SUCCESS\nvalue=$answer"
             ),
-            durationMs = 0,
+            durationMs = durationMs,
             responseStreamed = true
         )
     }
@@ -419,15 +378,6 @@ class ChatFragment : Fragment() {
         }
         return result.replace(Regex("<thinking>.*?</thinking>", RegexOption.DOT_MATCHES_ALL), "")
             .trim()
-    }
-
-    private fun extractEvcl(text: String): String? {
-        val cleaned = stripThink(text)
-        val match = Regex("(?m)^\\s*(@(?:math|time|weather|web|mail|loc)\\b[^\\r\\n]*)")
-            .find(cleaned)
-        return match?.groupValues?.get(1)
-            ?.trim()
-            ?.trimEnd('.', ';')
     }
 
     private fun evAnswer(outcome: TaskOutcome): String {

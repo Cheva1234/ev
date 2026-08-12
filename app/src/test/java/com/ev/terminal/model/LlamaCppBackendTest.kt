@@ -44,4 +44,20 @@ class LlamaCppBackendTest {
 
         assertEquals("@math 2+2", parseCliOutput(mixed))
     }
+
+    @Test
+    fun `cli parser removes echoed prompt before response marker`() {
+        val echoed = "system instructions\nUser: helloEV:\nHello! How can I help?"
+
+        assertEquals("Hello! How can I help?", parseCliOutput(echoed, "EV:"))
+    }
+
+    @Test
+    fun `stream filter waits for marker and streams only the answer`() {
+        val filter = ResponseStreamFilter("EV:")
+
+        assertEquals("", filter.accept("system\nUser: helloE"))
+        assertEquals("Hello", filter.accept("V:\nHello"))
+        assertEquals(" there", filter.accept(" there"))
+    }
 }

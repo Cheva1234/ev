@@ -73,8 +73,59 @@ internal fun sanitizeCliOutput(output: String): String {
         .joinToString("\n")
 }
 
-internal fun parseCliOutput(output: String): String {
+private fun responseMarker(prompt: String): String? {
+    return when {
+        prompt.trimEnd().endsWith("EVCL:") -> "EVCL:"
+        prompt.trimEnd().endsWith("EV:") -> "EV:"
+        else -> null
+    }
+}
+
+/**
+ * Holds model output until the prompt's response marker has been seen.
+ *
+ * Some llama.cpp builds ignore the prompt-display flag and echo the complete
+ * prompt before generating. That echo must never reach the chat bubble.
+ */
+internal class ResponseStreamFilter(private val marker: String?) {
+    private var responseStarted = marker == null
+    private val pending = StringBuilder()
+
+    fun accept(chunk: String): String {
+        val cleanChunk = sanitizeCliOutput(chunk)
+        if (cleanChunk.isEmpty()) return ""
+        if (responseStarted) return cleanChunk
+
+        pending.append(cleanChunk)
+        val buffered = pending.toString()
+        val markerIndex = buffered.lastIndexOf(marker!!)
+        if (markerIndex < 0) {
+            // Keep the buffer bounded while still allowing a marker split over
+            // two chunks to be recognized.
+            val keep = marker.length - 1
+            if (pending.length > 8192) {
+                val tail = pending.substring(pending.length - maxOf(keep, 0))
+                pending.clear()
+                pending.append(tail)
+            }
+            return ""
+        }
+
+        responseStarted = true
+        val response = buffered.substring(markerIndex + marker.length)
+        pending.clear()
+        return response.trimStart()
+    }
+}
+
+internal fun parseCliOutput(output: String, marker: String? = null): String {
     var text = sanitizeCliOutput(output)
+    if (marker != null) {
+        val markerIndex = text.lastIndexOf(marker)
+        if (markerIndex >= 0) {
+            text = text.substring(markerIndex + marker.length)
+        }
+    }
     if (text.contains("[End thinking]")) {
         text = text.substringAfterLast("[End thinking]")
     }
@@ -175,10 +226,11 @@ class LlamaCppBackend(
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
+            val streamFilter = ResponseStreamFilter(responseMarker(request.prompt))
             val outputJob = async(Dispatchers.IO) {
                 proc.inputStream.use { input ->
                     collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS) { chunk ->
-                        val cleanChunk = sanitizeCliOutput(chunk)
+                        val cleanChunk = streamFilter.accept(chunk)
                         if (cleanChunk.isNotEmpty()) onChunk(cleanChunk)
                     }
                 }
@@ -201,7 +253,7 @@ class LlamaCppBackend(
                     throw RuntimeException("llama-cli exited $exitCode: ${diagnostics.take(300)}")
                 }
                 val durationMs = System.currentTimeMillis() - start
-                val text = parseCliOutput(output)
+                val text = parseCliOutput(output, responseMarker(request.prompt))
                 Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
                 ModelResponse(
                     text = text,
