@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class ModelState {
     NOT_INSTALLED,
@@ -51,7 +53,7 @@ class ModelSupervisor(
     val error: StateFlow<String?> = _error.asStateFlow()
 
     private var downloadJob: Job? = null
-    private var activeTask = false
+    private val taskMutex = Mutex()
 
     val modelName: String = "LFM2.5-2.6B Q4_K_M (on-device)"
     val modelSizeBytes: Long = ggufDownloader.modelSizeBytes
@@ -123,8 +125,7 @@ class ModelSupervisor(
         runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
     }
 
-    suspend fun runTask(system: String, prompt: String, maxTokens: Int = 128): ModelResponse {
-        activeTask = true
+    suspend fun runTask(system: String, prompt: String, maxTokens: Int = 128): ModelResponse = taskMutex.withLock {
         val taskId = runtime.state.nextTask()
         runtime.eventBus.emit("task_start", "task" to taskId)
         runtime.state.setRuntimeState(RuntimeState.AI)
@@ -136,7 +137,6 @@ class ModelSupervisor(
         } catch (e: Exception) {
             runtime.state.setRuntimeState(RuntimeState.ERROR)
             runtime.eventBus.emit("model_load_error", "task" to taskId, "reason" to (e.message ?: "unknown"))
-            activeTask = false
             throw e
         }
         val loadMs = System.currentTimeMillis() - loadStart
@@ -163,7 +163,6 @@ class ModelSupervisor(
             _state.value = ModelState.READY
             runtime.eventBus.emit("model_unloaded", "task" to taskId)
             runtime.state.setRuntimeState(RuntimeState.IDLE)
-            activeTask = false
         }
         return response
     }

@@ -3,14 +3,14 @@ package com.ev.terminal.model
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.TimeUnit
 
 private const val MAX_PROCESS_OUTPUT_CHARS = 65536
 private const val PROCESS_TIMEOUT_MS = 120000L
@@ -49,6 +49,7 @@ class LlamaCppBackend(
     private val context: Context
 ) : EVModelBackend {
 
+    @Volatile
     private var process: Process? = null
     private var loaded = false
     private var cliBin: File? = null
@@ -125,15 +126,13 @@ class LlamaCppBackend(
                     collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS)
                 }
             }
+            val exitJob = async(Dispatchers.IO) { proc.waitFor() }
             try {
-                val output = withTimeout(PROCESS_TIMEOUT_MS) { outputJob.await() }
-                val exited = proc.waitFor(5, TimeUnit.SECONDS)
-                if (!exited) {
-                    throw RuntimeException("llama-cli did not exit after closing output")
-                }
-                Log.i("EV_MODEL", "llama-cli exited ${proc.exitValue()}, output length=${output.length}")
-                if (proc.exitValue() != 0) {
-                    throw RuntimeException("llama-cli exited ${proc.exitValue()}: ${output.take(300)}")
+                val exitCode = withTimeout(PROCESS_TIMEOUT_MS) { exitJob.await() }
+                val output = outputJob.await()
+                Log.i("EV_MODEL", "llama-cli exited $exitCode, output length=${output.length}")
+                if (exitCode != 0) {
+                    throw RuntimeException("llama-cli exited $exitCode: ${output.take(300)}")
                 }
                 val durationMs = System.currentTimeMillis() - start
                 val text = parseOutput(output)
@@ -146,9 +145,12 @@ class LlamaCppBackend(
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 throw RuntimeException("llama-cli timed out (${PROCESS_TIMEOUT_MS / 1000}s)", e)
             } finally {
-                if (proc.isAlive) proc.destroyForcibly()
-                outputJob.cancelAndJoin()
-                process = null
+                withContext(NonCancellable) {
+                    if (proc.isAlive) proc.destroyForcibly()
+                    runCatching { outputJob.cancelAndJoin() }
+                    runCatching { exitJob.cancelAndJoin() }
+                    if (process === proc) process = null
+                }
             }
         }
     }
