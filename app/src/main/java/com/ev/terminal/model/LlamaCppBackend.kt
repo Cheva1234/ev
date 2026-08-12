@@ -21,7 +21,11 @@ private const val PROCESS_TIMEOUT_MS = 120000L
  * llama-cli can stream generated tokens as one very long line. Reading with readLine()
  * would therefore allocate the whole response before a size limit can be applied.
  */
-internal fun collectProcessOutput(input: InputStream, maxChars: Int): String {
+internal suspend fun collectProcessOutput(
+    input: InputStream,
+    maxChars: Int,
+    onChunk: suspend (String) -> Unit = {}
+): String {
     require(maxChars > 0) { "maxChars must be positive" }
 
     val output = StringBuilder(minOf(maxChars, 8192))
@@ -39,6 +43,7 @@ internal fun collectProcessOutput(input: InputStream, maxChars: Int): String {
                 StandardCharsets.UTF_8
             )
             output.append(chunk)
+            onChunk(chunk)
         }
         // Continue draining after the cap so llama-cli cannot block on a full pipe.
     }
@@ -90,6 +95,13 @@ class LlamaCppBackend(
     }
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
+        return generate(request) {}
+    }
+
+    override suspend fun generate(
+        request: ModelRequest,
+        onChunk: suspend (String) -> Unit
+    ): ModelResponse {
         return withContext(Dispatchers.IO) {
             val start = System.currentTimeMillis()
             val cli = cliFile()
@@ -123,7 +135,7 @@ class LlamaCppBackend(
             process = proc
             val outputJob = async(Dispatchers.IO) {
                 proc.inputStream.use { input ->
-                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS)
+                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS, onChunk)
                 }
             }
             val exitJob = async(Dispatchers.IO) { proc.waitFor() }

@@ -12,7 +12,8 @@ data class TaskOutcome(
     val taskId: Int,
     val family: String,
     val result: ToolResult,
-    val durationMs: Long
+    val durationMs: Long,
+    val responseStreamed: Boolean = false
 )
 
 class TaskManager(

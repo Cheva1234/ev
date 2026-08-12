@@ -25,6 +25,20 @@ data class ModelStatus(
 interface EVModelBackend {
     suspend fun load()
     suspend fun generate(request: ModelRequest): ModelResponse
+
+    /**
+     * Generates a response and reports output chunks as the backend receives them.
+     * Backends that cannot stream remain compatible by using the completed response.
+     */
+    suspend fun generate(
+        request: ModelRequest,
+        onChunk: suspend (String) -> Unit
+    ): ModelResponse {
+        val response = generate(request)
+        if (response.text.isNotEmpty()) onChunk(response.text)
+        return response
+    }
+
     suspend fun unload()
     suspend fun status(): ModelStatus
 }

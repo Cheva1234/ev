@@ -16,7 +16,9 @@ import com.ev.terminal.harness.RuntimeState
 import com.ev.terminal.harness.TaskOutcome
 import com.ev.terminal.storage.ChatEntry
 import com.ev.terminal.tools.ToolStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ChatFragment : Fragment() {
@@ -30,6 +32,10 @@ class ChatFragment : Fragment() {
 
     private val entries = mutableListOf<ChatUiEntry>()
     private var sessionId = 1
+    private var taskRunning = false
+    private var liveEntryIndex: Int? = null
+    private val liveRaw = StringBuilder()
+    private var lastLiveUpdateMs = 0L
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -135,6 +141,7 @@ class ChatFragment : Fragment() {
     }
 
     private fun submit() {
+        if (taskRunning) return
         val text = binding.input.text.toString().trim()
         if (text.isEmpty()) return
         binding.input.setText("")
@@ -214,10 +221,12 @@ class ChatFragment : Fragment() {
 
     private fun handleUserTask(text: String) {
         appendUser(text)
+        taskRunning = true
+        binding.sendBtn.isEnabled = false
         lifecycleScope.launch {
             var errorMsg: String? = null
-            val outcome: TaskOutcome? = try {
-                if (text.trim().startsWith("@")) {
+            try {
+                val outcome: TaskOutcome? = if (text.trim().startsWith("@")) {
                     runtime.taskManager.runEvcl(text)
                 } else {
                     runtime.fastPath.tryResolve(text)?.let { result ->
@@ -229,24 +238,156 @@ class ChatFragment : Fragment() {
                         )
                     } ?: runModelTask(text)
                 }
+                when {
+                    outcome != null -> {
+                        appendTool(outcome)
+                        if (!outcome.responseStreamed) appendEv(evAnswer(outcome))
+                    }
+                    else -> {
+                        appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
+                        com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
+                    }
+                }
             } catch (e: Exception) {
                 errorMsg = e.message ?: e.toString()
-                null
-            }
-            when {
-                outcome != null -> {
-                    appendTool(outcome)
-                    appendEv(evAnswer(outcome))
-                }
-                errorMsg != null -> {
-                    appendEv("MODEL ERROR\n\n$errorMsg\n\nCheck CONSOLE for details. Run /model for status.")
-                }
-                else -> {
-                    appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
-                    com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
-                }
+                val errorText = "MODEL ERROR\n\n$errorMsg\n\nCheck CONSOLE for details. Run /model for status."
+                if (liveEntryIndex != null) finishLiveStream(errorText) else appendEv(errorText)
+            } finally {
+                taskRunning = false
+                binding.sendBtn.isEnabled = true
             }
         }
+    }
+
+    private suspend fun streamChunk(chunk: String) {
+        withContext(Dispatchers.Main.immediate) {
+            appendLiveChunk(chunk)
+        }
+    }
+
+    private fun startLiveStream() {
+        liveRaw.clear()
+        lastLiveUpdateMs = 0L
+        val entry = ChatUiEntry("EV", "THINKING…")
+        entries.add(entry)
+        liveEntryIndex = entries.lastIndex
+        adapter.append(entry)
+        scrollToBottom()
+    }
+
+    private fun resetLiveStream(label: String) {
+        liveRaw.clear()
+        lastLiveUpdateMs = 0L
+        updateLiveEntry(label)
+    }
+
+    private fun appendLiveChunk(chunk: String) {
+        if (liveEntryIndex == null) return
+        liveRaw.append(chunk)
+        val now = System.currentTimeMillis()
+        if (now - lastLiveUpdateMs < 80L && !chunk.contains('\n')) return
+        lastLiveUpdateMs = now
+        updateLiveEntry(livePreview())
+    }
+
+    private fun livePreview(): String {
+        val raw = liveRaw.toString()
+        val endThinking = raw.lastIndexOf("[End thinking]")
+        if (endThinking >= 0) {
+            val answer = raw.substring(endThinking + "[End thinking]".length)
+                .substringBefore("[ Prompt:")
+                .substringBefore("Exiting...")
+                .trim()
+            if (answer.isNotEmpty()) return answer
+        }
+
+        val startThinking = raw.lastIndexOf("[Start thinking]")
+        if (startThinking >= 0) {
+            val thinking = raw.substring(startThinking + "[Start thinking]".length).trim()
+            return "THINKING…\n\n${thinking.takeLast(4096)}".trim()
+        }
+        return "GENERATING…\n\n${raw.takeLast(4096)}".trim()
+    }
+
+    private fun updateLiveEntry(text: String) {
+        val index = liveEntryIndex ?: return
+        val updated = entries[index].copy(text = text.ifBlank { "THINKING…" })
+        entries[index] = updated
+        adapter.update(index, updated)
+        scrollToBottom()
+    }
+
+    private fun finishLiveStream(text: String) {
+        val index = liveEntryIndex ?: return
+        val finalText = text.trim().ifBlank { "(model returned no visible text)" }
+        val updated = entries[index].copy(text = finalText)
+        entries[index] = updated
+        adapter.update(index, updated)
+        runtime.sessionStore.append(ChatEntry("EV", finalText, ts = now()))
+        liveEntryIndex = null
+        liveRaw.clear()
+        scrollToBottom()
+    }
+
+    private suspend fun runModelTask(text: String): TaskOutcome? {
+        val supervisor = runtime.modelSupervisor
+        if (!supervisor.isInstalled()) return null
+
+        withContext(Dispatchers.Main.immediate) { startLiveStream() }
+        val stream: suspend (String) -> Unit = { chunk -> streamChunk(chunk) }
+
+        val commandSystem = "You are EV, a phone-native operational assistant. " +
+            "Reply with exactly one EVCL command if a tool can help, otherwise reply with exactly NONE. " +
+            "EVCL commands: @math <expr>, @time now, @weather <op> \"<loc>\", " +
+            "@web search \"<query>\", @mail latest, @loc current. No other text.\n\n" +
+            "Examples:\n" +
+            "User: differentiate x^2*sin(x)\nEVCL: @math diff(x^2*sin(x),x)\n" +
+            "User: what is 84*9.81\nEVCL: @math 84*9.81\n" +
+            "User: what time is it\nEVCL: @time now\n" +
+            "User: weather in Bangkok\nEVCL: @weather current \"Bangkok\"\n" +
+            "User: search for Formula Student rules\nEVCL: @web search \"Formula Student rules\"\n" +
+            "User: check my email\nEVCL: @mail latest\n" +
+            "User: hello\nEVCL: NONE"
+
+        val answerSystem = "You are EV, a phone-native operational assistant. " +
+            "Answer the user's request directly in under 30 words. No commands, no explanations."
+
+        val commandText = extractEvcl(
+            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 200, onChunk = stream).text
+        )
+        withContext(Dispatchers.Main.immediate) { resetLiveStream("ANSWERING…") }
+        if (commandText != null && commandText.startsWith("@")) {
+            val result = runtime.taskManager.runEvcl(commandText)
+            val answerPrompt = "Tool result:\n${result.result.detail}\n\n" +
+                "Answer the user's request in under 30 words using the result."
+            val answer = stripThink(
+                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 128, onChunk = stream).text
+            )
+            withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
+            return TaskOutcome(
+                taskId = result.taskId,
+                family = result.family,
+                result = result.result.copy(summary = answer),
+                durationMs = result.durationMs,
+                responseStreamed = true
+            )
+        }
+        val answer = stripThink(
+            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 128, onChunk = stream).text
+        )
+        withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
+        return TaskOutcome(
+            taskId = runtime.state.nextTask(),
+            family = "LFM",
+            result = com.ev.terminal.tools.ToolResult(
+                "LFM",
+                com.ev.terminal.tools.ToolStatus.SUCCESS,
+                answer,
+                "LFM_RESULT\nstatus=SUCCESS\nvalue=$answer"
+            ),
+            durationMs = 0,
+            responseStreamed = true
+        )
     }
 
     private fun stripThink(text: String): String {
@@ -267,59 +408,6 @@ class ChatFragment : Fragment() {
         }
         val match = Regex("@\\w+[^\\n]*").find(segment)
         return match?.groupValues?.get(0)?.trim()
-    }
-
-    private suspend fun runModelTask(text: String): TaskOutcome? {
-        val supervisor = runtime.modelSupervisor
-        if (!supervisor.isInstalled()) return null
-
-        val commandSystem = "You are EV, a phone-native operational assistant. " +
-            "Reply with exactly one EVCL command if a tool can help, otherwise reply with exactly NONE. " +
-            "EVCL commands: @math <expr>, @time now, @weather <op> \"<loc>\", " +
-            "@web search \"<query>\", @mail latest, @loc current. No other text.\n\n" +
-            "Examples:\n" +
-            "User: differentiate x^2*sin(x)\nEVCL: @math diff(x^2*sin(x),x)\n" +
-            "User: what is 84*9.81\nEVCL: @math 84*9.81\n" +
-            "User: what time is it\nEVCL: @time now\n" +
-            "User: weather in Bangkok\nEVCL: @weather current \"Bangkok\"\n" +
-            "User: search for Formula Student rules\nEVCL: @web search \"Formula Student rules\"\n" +
-            "User: check my email\nEVCL: @mail latest\n" +
-            "User: hello\nEVCL: NONE"
-
-        val answerSystem = "You are EV, a phone-native operational assistant. " +
-            "Answer the user's request directly in under 30 words. No commands, no explanations."
-
-        val commandText = extractEvcl(
-            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 200).text
-        )
-        if (commandText != null && commandText.startsWith("@")) {
-            val result = runtime.taskManager.runEvcl(commandText)
-            val answerPrompt = "Tool result:\n${result.result.detail}\n\n" +
-                "Answer the user's request in under 30 words using the result."
-            val answer = stripThink(
-                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 128).text
-            )
-            return TaskOutcome(
-                taskId = result.taskId,
-                family = result.family,
-                result = result.result.copy(summary = answer),
-                durationMs = result.durationMs
-            )
-        }
-        val answer = stripThink(
-            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 128).text
-        )
-        return TaskOutcome(
-            taskId = runtime.state.nextTask(),
-            family = "LFM",
-            result = com.ev.terminal.tools.ToolResult(
-                "LFM",
-                com.ev.terminal.tools.ToolStatus.SUCCESS,
-                answer,
-                "LFM_RESULT\nstatus=SUCCESS\nvalue=$answer"
-            ),
-            durationMs = 0
-        )
     }
 
     private fun evAnswer(outcome: TaskOutcome): String {

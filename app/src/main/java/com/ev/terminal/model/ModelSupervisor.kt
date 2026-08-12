@@ -125,7 +125,12 @@ class ModelSupervisor(
         runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
     }
 
-    suspend fun runTask(system: String, prompt: String, maxTokens: Int = 128): ModelResponse = taskMutex.withLock {
+    suspend fun runTask(
+        system: String,
+        prompt: String,
+        maxTokens: Int = 128,
+        onChunk: suspend (String) -> Unit = {}
+    ): ModelResponse = taskMutex.withLock {
         val taskId = runtime.state.nextTask()
         runtime.eventBus.emit("task_start", "task" to taskId)
         runtime.state.setRuntimeState(RuntimeState.AI)
@@ -151,7 +156,8 @@ class ModelSupervisor(
                     maxTokens = maxTokens,
                     temperature = runtime.settings.temperature,
                     topP = 0.9f
-                )
+                ),
+                onChunk
             )
         } finally {
             runtime.eventBus.emit("model_unload", "task" to taskId)
