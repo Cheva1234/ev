@@ -53,6 +53,7 @@ class LlamaCppBackend(
             )
             val pb = ProcessBuilder(cmd)
             pb.redirectErrorStream(true)
+            pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
             val output = proc.inputStream.bufferedReader().use { it.readText() }

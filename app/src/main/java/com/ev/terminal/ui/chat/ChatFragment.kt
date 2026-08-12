@@ -17,6 +17,7 @@ import com.ev.terminal.harness.TaskOutcome
 import com.ev.terminal.storage.ChatEntry
 import com.ev.terminal.tools.ToolStatus
 import kotlinx.coroutines.launch
+import java.io.File
 
 class ChatFragment : Fragment() {
 
@@ -185,10 +186,19 @@ class ChatFragment : Fragment() {
                         }
                     }
                     else -> {
-                        val m = runtime.state.model.value
                         val supervisor = runtime.modelSupervisor
                         val state = supervisor.state.value
-                        appendEv("MODEL\n\n${m.name}\n${m.quant}\n\nSTATE\n$state\n\nBACKEND\nOn-device (llama.cpp)\n\nTo install the model, run: /model load")
+                        val gguf = supervisor.ggufDownloader
+                        val ctx = requireContext()
+                        val libDir = ctx.applicationInfo.nativeLibraryDir
+                        val cli = File(libDir, "llama-cli")
+                        val model = File(ctx.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf")
+                        appendEv("MODEL\n\n" +
+                            "STATE\n$state\n\n" +
+                            "GGUF FILE\n${if (model.exists()) "present (${model.length() / 1048576} MB)" else "missing"}\n\n" +
+                            "LLAMA-CLI\n${if (cli.exists()) "present ($libDir)" else "missing ($libDir)"}\n\n" +
+                            "ARCH\n${android.os.Build.SUPPORTED_ABIS.joinToString()}\n\n" +
+                            "To install the model, run: /model load")
                     }
                 }
             }
@@ -205,6 +215,7 @@ class ChatFragment : Fragment() {
     private fun handleUserTask(text: String) {
         appendUser(text)
         lifecycleScope.launch {
+            var errorMsg: String? = null
             val outcome: TaskOutcome? = try {
                 if (text.trim().startsWith("@")) {
                     runtime.taskManager.runEvcl(text)
@@ -219,16 +230,21 @@ class ChatFragment : Fragment() {
                     } ?: runModelTask(text)
                 }
             } catch (e: Exception) {
+                errorMsg = e.message ?: e.toString()
                 null
             }
-            if (outcome == null) {
-                appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
-                if (!text.trim().startsWith("@")) {
+            when {
+                outcome != null -> {
+                    appendTool(outcome)
+                    appendEv(evAnswer(outcome))
+                }
+                errorMsg != null -> {
+                    appendEv("MODEL ERROR\n\n$errorMsg\n\nCheck CONSOLE for details. Run /model for status.")
+                }
+                else -> {
+                    appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
                     com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                 }
-            } else {
-                appendTool(outcome)
-                appendEv(evAnswer(outcome))
             }
         }
     }
