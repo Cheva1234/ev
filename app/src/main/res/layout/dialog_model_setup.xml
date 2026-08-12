@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/ev_black"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/jetbrains_mono_family"
+        android:text="MODEL SETUP"
+        android:textColor="@color/ev_cyan"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/setup_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="@font/jetbrains_mono_family"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/ev_off_white"
+            android:textSize="13sp" />
+
+    </ScrollView>
+
+    <ProgressBar
+        android:id="@+id/setup_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:max="100"
+        android:progressTint="@color/ev_cyan"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/setup_progress_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:fontFamily="@font/jetbrains_mono_family"
+        android:textColor="@color/ev_gray"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/setup_skip"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/bg_setting_button"
+            android:fontFamily="@font/jetbrains_mono_family"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="SKIP"
+            android:textColor="@color/ev_gray"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/setup_confirm"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_setting_button"
+            android:fontFamily="@font/jetbrains_mono_family"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="DOWNLOAD"
+            android:textColor="@color/ev_cyan"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+</LinearLayout>

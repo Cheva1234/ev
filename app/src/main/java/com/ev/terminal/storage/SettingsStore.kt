@@ -39,6 +39,14 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt("max_output_tokens", 128)
         set(v) = prefs.edit().putInt("max_output_tokens", v).apply()
 
+    var modelServerUrl: String
+        get() = prefs.getString("model_server_url", "http://10.0.2.2:11434") ?: "http://10.0.2.2:11434"
+        set(v) = prefs.edit().putString("model_server_url", v).apply()
+
+    var modelDownloaded: Boolean
+        get() = prefs.getBoolean("model_downloaded", false)
+        set(v) = prefs.edit().putBoolean("model_downloaded", v).apply()
+
     var toolMath: Boolean
         get() = prefs.getBoolean("tool_math", true)
         set(v) = prefs.edit().putBoolean("tool_math", v).apply()

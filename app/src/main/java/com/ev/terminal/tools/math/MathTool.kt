@@ -37,7 +37,14 @@ class MathTool : Tool {
     }
 
     private fun evaluate(expr: String): String {
-        val normalized = expr
+        val trimmed = expr.trim()
+        val diffMatch = Regex("^diff\\((.+),([a-z])+\\)$").find(trimmed)
+        if (diffMatch != null) {
+            val inner = diffMatch.groupValues[1]
+            val variable = diffMatch.groupValues[2]
+            return SymbolicDifferentiator.diff(inner, variable)
+        }
+        val normalized = trimmed
             .replace("^", "**")
             .replace("×", "*")
             .replace("÷", "/")

@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.ev.terminal.databinding.ActivityMainBinding
 import com.ev.terminal.harness.EVRuntime
+import com.ev.terminal.ui.ModelSetupDialog
 import com.ev.terminal.ui.chat.ChatFragment
 import com.ev.terminal.ui.console.ConsoleFragment
 import com.ev.terminal.ui.settings.SettingsFragment
@@ -23,6 +24,10 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             showFragment(ChatFragment())
+        }
+
+        if (!runtime.settings.modelDownloaded) {
+            ModelSetupDialog(this, runtime).show()
         }
 
         binding.bottomNav.setOnItemSelectedListener { item ->

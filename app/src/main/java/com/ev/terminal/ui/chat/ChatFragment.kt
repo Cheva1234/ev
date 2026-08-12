@@ -199,7 +199,7 @@ class ChatFragment : Fragment() {
                             result = result,
                             durationMs = result.durationMs
                         )
-                    }
+                    } ?: runModelTask(text)
                 }
             } catch (e: Exception) {
                 null
@@ -211,6 +211,79 @@ class ChatFragment : Fragment() {
                 appendEv(evAnswer(outcome))
             }
         }
+    }
+
+    private fun stripThink(text: String): String {
+        var result = text
+        if (result.contains(" response")) {
+            result = result.replace(Regex(".*? response", RegexOption.DOT_MATCHES_ALL), "")
+        }
+        return result.replace(Regex("<thinking>.*?</thinking>", RegexOption.DOT_MATCHES_ALL), "")
+            .trim()
+    }
+
+    private fun extractEvcl(text: String): String? {
+        val cleaned = stripThink(text)
+        val segment = if (cleaned.contains(" response")) {
+            cleaned.substringAfterLast(" response")
+        } else {
+            cleaned
+        }
+        val match = Regex("@\\w+[^\\n]*").find(segment)
+        return match?.groupValues?.get(0)?.trim()
+    }
+
+    private suspend fun runModelTask(text: String): TaskOutcome? {
+        val supervisor = runtime.modelSupervisor
+        if (!supervisor.isInstalled()) return null
+
+        val commandSystem = "You are EV, a phone-native operational assistant. " +
+            "Reply with exactly one EVCL command if a tool can help, otherwise reply with exactly NONE. " +
+            "EVCL commands: @math <expr>, @time now, @weather <op> \"<loc>\", " +
+            "@web search \"<query>\", @mail latest, @loc current. No other text.\n\n" +
+            "Examples:\n" +
+            "User: differentiate x^2*sin(x)\nEVCL: @math diff(x^2*sin(x),x)\n" +
+            "User: what is 84*9.81\nEVCL: @math 84*9.81\n" +
+            "User: what time is it\nEVCL: @time now\n" +
+            "User: weather in Bangkok\nEVCL: @weather current \"Bangkok\"\n" +
+            "User: search for Formula Student rules\nEVCL: @web search \"Formula Student rules\"\n" +
+            "User: check my email\nEVCL: @mail latest\n" +
+            "User: hello\nEVCL: NONE"
+
+        val answerSystem = "You are EV, a phone-native operational assistant. " +
+            "Answer the user's request directly in under 30 words. No commands, no explanations."
+
+        val commandText = extractEvcl(
+            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 200).text
+        )
+        if (commandText != null && commandText.startsWith("@")) {
+            val result = runtime.taskManager.runEvcl(commandText)
+            val answerPrompt = "Tool result:\n${result.result.detail}\n\n" +
+                "Answer the user's request in under 30 words using the result."
+            val answer = stripThink(
+                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 128).text
+            )
+            return TaskOutcome(
+                taskId = result.taskId,
+                family = result.family,
+                result = result.result.copy(summary = answer),
+                durationMs = result.durationMs
+            )
+        }
+        val answer = stripThink(
+            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 128).text
+        )
+        return TaskOutcome(
+            taskId = runtime.state.nextTask(),
+            family = "LFM",
+            result = com.ev.terminal.tools.ToolResult(
+                "LFM",
+                com.ev.terminal.tools.ToolStatus.SUCCESS,
+                answer,
+                "LFM_RESULT\nstatus=SUCCESS\nvalue=$answer"
+            ),
+            durationMs = 0
+        )
     }
 
     private fun evAnswer(outcome: TaskOutcome): String {

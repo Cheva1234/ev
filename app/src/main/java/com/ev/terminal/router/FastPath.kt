@@ -81,8 +81,14 @@ class FastPath(private val registry: ToolRegistry) {
                 lower.removePrefix("calculate ").removePrefix("compute ").trim()
             lower.startsWith("solve ") ->
                 lower.removePrefix("solve ").trim()
-            lower.startsWith("differentiate ") || lower.startsWith("integrate ") ->
+            lower.startsWith("differentiate ") || lower.startsWith("integrate ") -> {
+                val expr = lower.removePrefix("differentiate ").removePrefix("integrate ").trim()
+                if (expr.isNotEmpty()) {
+                    val op = if (lower.startsWith("differentiate")) "diff" else "integrate"
+                    return "$op(${normalizeMathWords(expr)},x)"
+                }
                 return null
+            }
             else -> null
         }
         if (expression != null && expression.isNotEmpty()) {
@@ -92,6 +98,15 @@ class FastPath(private val registry: ToolRegistry) {
             return lower
         }
         return null
+    }
+
+    private fun normalizeMathWords(expr: String): String {
+        var e = expr
+        e = e.replace("squared", "^2").replace("cubed", "^3")
+        e = e.replace("times", "*").replace("multiplied by", "*")
+        e = e.replace("divided by", "/").replace("plus", "+").replace("minus", "-")
+        e = e.replace("sin x", "sin(x)").replace("cos x", "cos(x)").replace("tan x", "tan(x)")
+        return e
     }
 
     private fun extractQuotedOrAfter(lower: String, marker: String): String? {
