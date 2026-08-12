@@ -1,9 +1,7 @@
 package com.ev.terminal.harness
 
 import android.content.Context
-import com.ev.terminal.model.ModelDownloader
 import com.ev.terminal.model.ModelSupervisor
-import com.ev.terminal.model.OllamaBackend
 import com.ev.terminal.observability.JsonlLogger
 import com.ev.terminal.observability.MemoryMonitor
 import com.ev.terminal.router.FastPath
@@ -30,11 +28,7 @@ class EVRuntime private constructor(context: Context) {
     val toolRegistry = ToolRegistry()
     val taskManager = TaskManager(this, toolRegistry)
     val fastPath = FastPath(toolRegistry)
-    val modelSupervisor = ModelSupervisor(
-        this,
-        OllamaBackend(settings.modelServerUrl, "oamazonasgabriel/lfm2.5-2.6b:q4_k_m-8gbGPU"),
-        ModelDownloader(settings.modelServerUrl)
-    )
+    val modelSupervisor = ModelSupervisor(this, context)
 
     private val _statusLine = MutableStateFlow("IDLE")
     val statusLine: StateFlow<String> = _statusLine.asStateFlow()

@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 enum class ModelState {
     NOT_INSTALLED,
@@ -28,19 +27,21 @@ enum class ModelState {
 
 class ModelSupervisor(
     private val runtime: EVRuntime,
-    private val backend: EVModelBackend,
-    private val downloader: ModelDownloader
+    private val context: Context
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    val ggufDownloader = GgufDownloader(context)
+    val backend: EVModelBackend = LlamaCppBackend(context)
+
     private val _state = MutableStateFlow(
-        if (runtime.settings.modelDownloaded) ModelState.READY else ModelState.NOT_INSTALLED
+        if (ggufDownloader.isDownloaded()) ModelState.READY else ModelState.NOT_INSTALLED
     )
     val state: StateFlow<ModelState> = _state.asStateFlow()
 
-    private val _progress = MutableStateFlow<DownloadProgress?>(null)
-    val progress: StateFlow<DownloadProgress?> = _progress.asStateFlow()
+    private val _progress = MutableStateFlow<GgufDownloadProgress?>(null)
+    val progress: StateFlow<GgufDownloadProgress?> = _progress.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -48,8 +49,8 @@ class ModelSupervisor(
     private var downloadJob: Job? = null
     private var activeTask = false
 
-    val modelName: String = "oamazonasgabriel/lfm2.5-2.6b:q4_k_m-8gbGPU"
-    val modelSizeBytes: Long = 1_670_000_000L
+    val modelName: String = "LFM2.5-2.6B Q4_K_M (on-device)"
+    val modelSizeBytes: Long = ggufDownloader.modelSizeBytes
 
     fun isInstalled(): Boolean = _state.value == ModelState.READY
 
@@ -60,12 +61,12 @@ class ModelSupervisor(
         runtime.eventBus.emit("model_download_start", "model" to modelName)
         downloadJob = scope.launch {
             try {
-                downloader.progress.collect { p ->
+                ggufDownloader.progress.collect { p ->
                     _progress.value = p
                     runtime.eventBus.emit(
                         "model_download",
                         "percent" to String.format("%.1f", p.percent),
-                        "status" to p.status
+                        "mb" to (p.downloadedBytes / (1024 * 1024))
                     )
                 }
             } catch (e: Exception) {
@@ -74,9 +75,27 @@ class ModelSupervisor(
         }
         scope.launch {
             try {
-                downloader.pull(modelName)
+                val dlJob = scope.launch {
+                    ggufDownloader.download()
+                }
+                var lastActivity = System.currentTimeMillis()
+                val watchdog = scope.launch {
+                    while (dlJob.isActive) {
+                        kotlinx.coroutines.delay(5000)
+                        val p = _progress.value
+                        if (p != null && p.downloadedBytes > 0) {
+                            lastActivity = System.currentTimeMillis()
+                        }
+                        if (System.currentTimeMillis() - lastActivity > 30000) {
+                            dlJob.cancel()
+                            throw RuntimeException("download stalled (no progress for 30s)")
+                        }
+                    }
+                }
+                dlJob.join()
+                watchdog.cancel()
                 _state.value = ModelState.READY
-                _progress.value = DownloadProgress("success", modelSizeBytes, modelSizeBytes, 100.0)
+                _progress.value = GgufDownloadProgress(modelSizeBytes, modelSizeBytes, 100.0)
                 runtime.eventBus.emit("model_download_done", "model" to modelName)
             } catch (e: Exception) {
                 _state.value = ModelState.ERROR
@@ -84,6 +103,13 @@ class ModelSupervisor(
                 runtime.eventBus.emit("model_download_error", "reason" to (e.message ?: "unknown"))
             }
         }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        _state.value = ModelState.NOT_INSTALLED
+        _progress.value = null
+        runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
     }
 
     suspend fun runTask(system: String, prompt: String, maxTokens: Int = 128): ModelResponse {

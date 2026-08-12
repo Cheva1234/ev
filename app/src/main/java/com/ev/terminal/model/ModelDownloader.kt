@@ -31,7 +31,7 @@ class ModelDownloader(private val baseUrl: String) {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.connectTimeout = 8000
-            conn.readTimeout = 0
+            conn.readTimeout = 60000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             val body = JSONObject().apply {

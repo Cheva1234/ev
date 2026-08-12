@@ -12,7 +12,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import com.ev.terminal.R
 import com.ev.terminal.harness.EVRuntime
-import com.ev.terminal.model.DownloadProgress
+import com.ev.terminal.model.GgufDownloadProgress
 import com.ev.terminal.model.ModelState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +32,7 @@ class ModelSetupDialog(
     private lateinit var progressBar: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var skipBtn: TextView
+    private lateinit var cancelBtn: TextView
     private lateinit var confirmBtn: TextView
 
     init {
@@ -48,6 +49,7 @@ class ModelSetupDialog(
         progressBar = view.findViewById(R.id.setup_progress)
         progressText = view.findViewById(R.id.setup_progress_text)
         skipBtn = view.findViewById(R.id.setup_skip)
+        cancelBtn = view.findViewById(R.id.setup_cancel)
         confirmBtn = view.findViewById(R.id.setup_confirm)
 
         val supervisor = runtime.modelSupervisor
@@ -59,13 +61,19 @@ class ModelSetupDialog(
             "MODEL\n${supervisor.modelName}\n\n" +
             "SIZE\n$sizeGb GB\n\n" +
             "FREE SPACE\n$freeGb GB available\n\n" +
-            "SERVER\n${runtime.settings.modelServerUrl}\n\n" +
-            "The model runs on your Ollama server. Download now?"
+            "BACKEND\nOn-device (llama.cpp)\n\n" +
+            "The model runs entirely on this phone. No server needed.\n\n" +
+            "Download now?"
 
         skipBtn.setOnClickListener { dismiss() }
+        cancelBtn.setOnClickListener {
+            supervisor.cancelDownload()
+            dismiss()
+        }
         confirmBtn.setOnClickListener {
             confirmBtn.isEnabled = false
             skipBtn.isEnabled = false
+            cancelBtn.visibility = android.view.View.VISIBLE
             progressBar.visibility = android.view.View.VISIBLE
             progressText.visibility = android.view.View.VISIBLE
             confirmBtn.text = "DOWNLOADING"
@@ -92,14 +100,14 @@ class ModelSetupDialog(
         }
     }
 
-    private fun updateProgress(p: DownloadProgress) {
+    private fun updateProgress(p: GgufDownloadProgress) {
         progressBar.progress = p.percent.toInt()
-        val doneMb = p.completedBytes / (1024 * 1024)
+        val doneMb = p.downloadedBytes / (1024 * 1024)
         val totalMb = p.totalBytes / (1024 * 1024)
-        progressText.text = when {
-            p.isDone -> "COMPLETE"
-            p.totalBytes > 0 -> "${p.status}  ${doneMb} / ${totalMb} MB  (${"%.1f".format(p.percent)}%)"
-            else -> p.status
+        progressText.text = if (p.percent >= 100.0) {
+            "COMPLETE"
+        } else {
+            "downloading  $doneMb / $totalMb MB  (${"%.1f".format(p.percent)}%)"
         }
     }
 
