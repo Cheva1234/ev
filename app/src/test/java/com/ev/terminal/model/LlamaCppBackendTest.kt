@@ -28,4 +28,20 @@ class LlamaCppBackendTest {
 
         assertEquals("hello world", chunks.joinToString(""))
     }
+
+    @Test
+    fun `cli output removes progress frames and diagnostics before command parsing`() {
+        val mixed = "\u001B[2KLoading model...\r|/\r" +
+            "llama_model_loader: metadata\n" +
+            "@math 84*9.81\n"
+
+        assertEquals("@math 84*9.81", parseCliOutput(mixed))
+    }
+
+    @Test
+    fun `cli command extraction ignores unrelated loading text`() {
+        val mixed = "Loading model...\n\n@math 2+2\n"
+
+        assertEquals("@math 2+2", parseCliOutput(mixed))
+    }
 }

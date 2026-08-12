@@ -373,16 +373,17 @@ class ChatFragment : Fragment() {
         val answerSystem = "Answer the user's request directly in one or two short sentences. " +
             "Do not show thinking, planning, analysis, or word counts. No commands."
 
+        // This is an internal classifier. Keep its raw output out of the visible answer bubble.
         val commandText = extractEvcl(
-            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 200, onChunk = stream).text
+            supervisor.runTask(commandSystem, "User: $text\nEVCL:", maxTokens = 64).text
         )
         withContext(Dispatchers.Main.immediate) { resetLiveStream("ANSWERING…") }
         if (commandText != null && commandText.startsWith("@")) {
             val result = runtime.taskManager.runEvcl(commandText)
             val answerPrompt = "Tool result:\n${result.result.detail}\n\n" +
-                "Answer the user's request in under 30 words using the result."
+                "Answer the user's request briefly using the result."
             val answer = stripThink(
-                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 128, onChunk = stream).text
+                supervisor.runTask(answerSystem, answerPrompt, maxTokens = 96, onChunk = stream).text
             )
             withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
             return TaskOutcome(
@@ -394,7 +395,7 @@ class ChatFragment : Fragment() {
             )
         }
         val answer = stripThink(
-            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 128, onChunk = stream).text
+            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 96, onChunk = stream).text
         )
         withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
         return TaskOutcome(
@@ -422,13 +423,11 @@ class ChatFragment : Fragment() {
 
     private fun extractEvcl(text: String): String? {
         val cleaned = stripThink(text)
-        val segment = if (cleaned.contains(" response")) {
-            cleaned.substringAfterLast(" response")
-        } else {
-            cleaned
-        }
-        val match = Regex("@\\w+[^\\n]*").find(segment)
-        return match?.groupValues?.get(0)?.trim()
+        val match = Regex("(?m)^\\s*(@(?:math|time|weather|web|mail|loc)\\b[^\\r\\n]*)")
+            .find(cleaned)
+        return match?.groupValues?.get(1)
+            ?.trim()
+            ?.trimEnd('.', ';')
     }
 
     private fun evAnswer(outcome: TaskOutcome): String {

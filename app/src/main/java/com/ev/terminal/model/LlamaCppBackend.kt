@@ -11,9 +11,23 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 
 private const val MAX_PROCESS_OUTPUT_CHARS = 65536
+private const val MAX_DIAGNOSTIC_OUTPUT_CHARS = 32768
 private const val PROCESS_TIMEOUT_MS = 120000L
+private val ANSI_ESCAPE = Regex("\\u001B\\[[0-?]*[ -/]*[@-~]")
+private val CLI_DIAGNOSTIC_PREFIXES = listOf(
+    "llama_", "ggml_", "load_", "loading", "progress", "main:", "system_",
+    "sampling", "prompt eval", "eval time", "llama_perf", "build:", "print_info",
+    "offloaded", "init_"
+)
+
+private fun isCliDiagnosticLine(line: String): Boolean {
+    val normalized = line.trim().lowercase(Locale.US)
+    return normalized.matches(Regex("^[|/\\\\—-]+$")) ||
+        CLI_DIAGNOSTIC_PREFIXES.any { normalized.startsWith(it) }
+}
 
 /**
  * Captures process output without assuming that the child writes newline-delimited text.
@@ -48,6 +62,30 @@ internal suspend fun collectProcessOutput(
         // Continue draining after the cap so llama-cli cannot block on a full pipe.
     }
     return output.toString()
+}
+
+/** Removes terminal control sequences and carriage-return progress frames. */
+internal fun sanitizeCliOutput(output: String): String {
+    return ANSI_ESCAPE.replace(output, "")
+        .replace('\r', '\n')
+        .lineSequence()
+        .filterNot(::isCliDiagnosticLine)
+        .joinToString("\n")
+}
+
+internal fun parseCliOutput(output: String): String {
+    var text = sanitizeCliOutput(output)
+    if (text.contains("[End thinking]")) {
+        text = text.substringAfterLast("[End thinking]")
+    }
+    text = text.substringBefore("[ Prompt:")
+    text = text.substringBefore("Exiting...")
+    text = text.replace(Regex("\\[Start thinking\\].*?\\[End thinking\\]", RegexOption.DOT_MATCHES_ALL), "")
+
+    return text.lineSequence()
+        .filterNot(::isCliDiagnosticLine)
+        .joinToString("\n")
+        .trim()
 }
 
 class LlamaCppBackend(
@@ -126,29 +164,44 @@ class LlamaCppBackend(
                 "-st",
                 "-t", "4",
                 "--no-warmup",
+                "--no-display-prompt",
+                "--no-conversation",
                 "--reasoning-budget", "0"
             )
-            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens} -c 2048 --reasoning-budget 0")
+            Log.i("EV_MODEL", "spawning llama-cli with prompt echo disabled and reasoning budget 0")
             val pb = ProcessBuilder(cmd)
-            pb.redirectErrorStream(true)
+            // stdout is model output; stderr is llama.cpp diagnostics and must not be parsed as text.
+            pb.redirectErrorStream(false)
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
             val outputJob = async(Dispatchers.IO) {
                 proc.inputStream.use { input ->
-                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS, onChunk)
+                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS) { chunk ->
+                        val cleanChunk = sanitizeCliOutput(chunk)
+                        if (cleanChunk.isNotEmpty()) onChunk(cleanChunk)
+                    }
+                }
+            }
+            val diagnosticJob = async(Dispatchers.IO) {
+                proc.errorStream.use { input ->
+                    collectProcessOutput(input, MAX_DIAGNOSTIC_OUTPUT_CHARS)
                 }
             }
             val exitJob = async(Dispatchers.IO) { proc.waitFor() }
             try {
                 val exitCode = withTimeout(PROCESS_TIMEOUT_MS) { exitJob.await() }
                 val output = outputJob.await()
+                val diagnostics = diagnosticJob.await()
                 Log.i("EV_MODEL", "llama-cli exited $exitCode, output length=${output.length}")
+                if (diagnostics.isNotBlank()) {
+                    Log.i("EV_MODEL", "llama-cli diagnostics: ${diagnostics.take(1000)}")
+                }
                 if (exitCode != 0) {
-                    throw RuntimeException("llama-cli exited $exitCode: ${output.take(300)}")
+                    throw RuntimeException("llama-cli exited $exitCode: ${diagnostics.take(300)}")
                 }
                 val durationMs = System.currentTimeMillis() - start
-                val text = parseOutput(output)
+                val text = parseCliOutput(output)
                 Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
                 ModelResponse(
                     text = text,
@@ -161,22 +214,12 @@ class LlamaCppBackend(
                 withContext(NonCancellable) {
                     if (proc.isAlive) proc.destroyForcibly()
                     runCatching { outputJob.cancelAndJoin() }
+                    runCatching { diagnosticJob.cancelAndJoin() }
                     runCatching { exitJob.cancelAndJoin() }
                     if (process === proc) process = null
                 }
             }
         }
-    }
-
-    private fun parseOutput(output: String): String {
-        var text = output
-        if (text.contains("[End thinking]")) {
-            text = text.substringAfterLast("[End thinking]")
-        }
-        text = text.substringBefore("[ Prompt:")
-        text = text.substringBefore("Exiting...")
-        text = text.replace(Regex("\\[Start thinking\\].*?\\[End thinking\\]", RegexOption.DOT_MATCHES_ALL), "")
-        return text.trim()
     }
 
     override suspend fun unload() {
