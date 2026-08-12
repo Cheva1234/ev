@@ -35,8 +35,12 @@ class ModelSupervisor(
     val ggufDownloader = GgufDownloader(context)
     val backend: EVModelBackend = LlamaCppBackend(context)
 
+    private fun bothReady(): Boolean = ggufDownloader.isDownloaded() && (backend as LlamaCppBackend).cliExists()
+
     private val _state = MutableStateFlow(
-        if (ggufDownloader.isDownloaded()) ModelState.READY else ModelState.NOT_INSTALLED
+        if (bothReady()) ModelState.READY
+        else if (ggufDownloader.isDownloaded()) ModelState.ERROR
+        else ModelState.NOT_INSTALLED
     )
     val state: StateFlow<ModelState> = _state.asStateFlow()
 
@@ -94,9 +98,16 @@ class ModelSupervisor(
                 }
                 dlJob.join()
                 watchdog.cancel()
-                _state.value = ModelState.READY
-                _progress.value = GgufDownloadProgress(modelSizeBytes, modelSizeBytes, 100.0)
-                runtime.eventBus.emit("model_download_done", "model" to modelName)
+                if (bothReady()) {
+                    _state.value = ModelState.READY
+                    _progress.value = GgufDownloadProgress(modelSizeBytes, modelSizeBytes, 100.0)
+                    runtime.eventBus.emit("model_download_done", "model" to modelName)
+                } else {
+                    val cliOk = (backend as LlamaCppBackend).cliExists()
+                    _state.value = ModelState.ERROR
+                    _error.value = if (!cliOk) "llama-cli binary missing from APK" else "model file incomplete"
+                    runtime.eventBus.emit("model_download_error", "reason" to (_error.value ?: "unknown"))
+                }
             } catch (e: Exception) {
                 _state.value = ModelState.ERROR
                 _error.value = e.message ?: "download failed"

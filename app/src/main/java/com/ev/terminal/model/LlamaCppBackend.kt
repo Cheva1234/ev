@@ -1,6 +1,7 @@
 package com.ev.terminal.model
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -21,11 +22,18 @@ class LlamaCppBackend(
     private fun cliFile(): File {
         cliBin?.let { if (it.exists()) return it }
         val src = File(nativeLibDir(), "libllama-cli.so")
+        if (!src.exists()) {
+            Log.e("EV_MODEL", "libllama-cli.so missing in ${nativeLibDir().absolutePath}")
+            throw RuntimeException("libllama-cli.so not found in nativeLibraryDir=${nativeLibDir().absolutePath}")
+        }
+        Log.i("EV_MODEL", "nativeLibraryDir=${nativeLibDir().absolutePath}")
+        Log.i("EV_MODEL", "cli src=${src.absolutePath}, exists=${src.exists()}, size=${src.length()}")
         val dst = File(context.filesDir, "llama-cli")
         if (!dst.exists() || dst.length() != src.length()) {
             src.copyTo(dst, overwrite = true)
         }
         dst.setExecutable(true, false)
+        Log.i("EV_MODEL", "cli dst=${dst.absolutePath}, exists=${dst.exists()}, size=${dst.length()}, exec=${dst.canExecute()}")
         cliBin = dst
         return dst
     }
@@ -33,10 +41,14 @@ class LlamaCppBackend(
     override suspend fun load() {
         withContext(Dispatchers.IO) {
             val model = modelFile()
-            if (!model.exists()) throw RuntimeException("model file not found: ${model.absolutePath}")
+            Log.i("EV_MODEL", "model=${model.absolutePath}, exists=${model.exists()}, size=${model.length()}")
+            if (!model.exists() || model.length() == 0L) {
+                throw RuntimeException("model file not found or empty: ${model.absolutePath} (size=${model.length()})")
+            }
             val cli = cliFile()
-            if (!cli.exists()) throw RuntimeException("llama-cli not found in ${nativeLibDir()}")
-            cli.setExecutable(true, false)
+            if (!cli.exists() || !cli.canExecute()) {
+                throw RuntimeException("llama-cli not usable: ${cli.absolutePath} (exists=${cli.exists()}, exec=${cli.canExecute()})")
+            }
             loaded = true
         }
     }
@@ -47,6 +59,9 @@ class LlamaCppBackend(
             val cli = cliFile()
             cli.setExecutable(true, false)
             val model = modelFile()
+            if (!model.exists()) {
+                throw RuntimeException("model file missing: ${model.absolutePath}")
+            }
             val prompt = if (request.system.isNotBlank()) {
                 "${request.system}\n\n${request.prompt}"
             } else {
@@ -63,6 +78,7 @@ class LlamaCppBackend(
                 "-st",
                 "-t", "4"
             )
+            Log.i("EV_MODEL", "spawning: ${cli.absolutePath} -m ${model.absolutePath} -st -n ${request.maxTokens}")
             val pb = ProcessBuilder(cmd)
             pb.redirectErrorStream(true)
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
@@ -71,11 +87,13 @@ class LlamaCppBackend(
             val output = proc.inputStream.bufferedReader().use { it.readText() }
             val exit = proc.waitFor()
             process = null
+            Log.i("EV_MODEL", "llama-cli exited $exit, output length=${output.length}")
             if (exit != 0) {
-                throw RuntimeException("llama-cli exited $exit: ${output.take(200)}")
+                throw RuntimeException("llama-cli exited $exit: ${output.take(300)}")
             }
             val durationMs = System.currentTimeMillis() - start
             val text = parseOutput(output)
+            Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
             ModelResponse(
                 text = text,
                 durationMs = durationMs,
@@ -109,4 +127,7 @@ class LlamaCppBackend(
     }
 
     override suspend fun status(): ModelStatus = ModelStatus(loaded, "LFM2.5-2.6B Q4_K_M")
+
+    fun cliExists(): Boolean = File(nativeLibDir(), "libllama-cli.so").exists()
+    fun modelExists(): Boolean = modelFile().exists() && modelFile().length() > 0
 }
