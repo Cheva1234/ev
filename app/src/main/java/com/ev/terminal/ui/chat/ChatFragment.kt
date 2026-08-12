@@ -148,7 +148,9 @@ class ChatFragment : Fragment() {
 
     private fun handleSlashCommand(command: String) {
         appendSystem("> $command")
-        when (command) {
+        val base = command.substringBefore(' ').trim()
+        val args = command.substringAfter(' ', "").trim()
+        when (base) {
             "/new" -> {
                 runtime.newSession()
                 entries.clear()
@@ -172,8 +174,8 @@ class ChatFragment : Fragment() {
                 appendEv(toolsText())
             }
             "/model" -> {
-                when (command) {
-                    "/model load" -> {
+                when (args) {
+                    "load" -> {
                         val supervisor = runtime.modelSupervisor
                         if (supervisor.isInstalled()) {
                             appendEv("Model already installed.")
