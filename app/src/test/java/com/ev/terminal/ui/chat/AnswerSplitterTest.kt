@@ -18,9 +18,18 @@ class AnswerSplitterTest {
     }
 
     @Test
-    fun `paragraphs become separate bubbles`() {
+    fun `short paragraphs merge into a single bubble`() {
         val text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
-        assertEquals(3, AnswerSplitter.split(text).size)
+        assertEquals(1, AnswerSplitter.split(text).size)
+    }
+
+    @Test
+    fun `long content splits into multiple bubbles`() {
+        val paragraph = (1..40).joinToString(" ") { "word$it" }
+        val text = (1..6).joinToString("\n\n") { paragraph }
+        val bubbles = AnswerSplitter.split(text)
+        assertTrue(bubbles.size >= 2)
+        assertTrue(bubbles.all { it.length <= AnswerSplitter.MAX_BUBBLE_CHARS })
     }
 
     @Test
