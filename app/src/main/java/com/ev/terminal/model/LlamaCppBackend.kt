@@ -100,9 +100,9 @@ internal class ResponseStreamFilter(private val marker: String?) {
         val buffered = pending.toString()
         val markerIndex = buffered.lastIndexOf(marker!!)
         if (markerIndex < 0) {
-            // Keep the buffer bounded while still allowing a marker split over
-            // two chunks to be recognized.
-            val keep = marker.length - 1
+            // Keep the whole marker in the buffer so a marker split over two
+            // chunks is always recognized, while bounding memory use.
+            val keep = marker.length
             if (pending.length > 8192) {
                 val tail = pending.substring(pending.length - maxOf(keep, 0))
                 pending.clear()

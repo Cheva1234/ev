@@ -24,6 +24,13 @@ class ToolRegistry {
 
     fun families(): List<String> = tools.keys.toList()
 
+    /** One usage line per enabled tool, used to build the agent system prompt. */
+    fun describeTools(enabled: (String) -> Boolean = { true }): String =
+        all()
+            .filter { enabled(it.family) }
+            .sortedBy { it.family }
+            .joinToString("\n") { it.usage }
+
     suspend fun execute(command: EvclCommand): ToolResult {
         val family = when (command) {
             is EvclCommand.Math -> "MATH"

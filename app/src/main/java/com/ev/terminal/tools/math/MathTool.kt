@@ -9,6 +9,8 @@ import java.util.Locale
 class MathTool : Tool {
     override val family = "MATH"
     override val operations = listOf("numeric", "symbolic", "unit")
+    override val usage = "MATH: pure arithmetic. Use for exact numeric calculation, never for general knowledge. " +
+        "Examples: @math 84*9.81, @math (2+3)^2, @math diff(x^2+3x,x)"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val expr = (command as? EvclCommand.Math)?.expression ?: return error("no expression")

@@ -8,6 +8,7 @@ import com.ev.terminal.tools.ToolStatus
 class MailTool : Tool {
     override val family = "MAIL"
     override val operations = listOf("latest", "search", "read")
+    override val usage = "MAIL: user's email inbox. Example: @mail latest"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val cmd = command as? EvclCommand.Mail ?: return error("bad command")

@@ -7,10 +7,6 @@ class SettingsStore(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("ev_settings", Context.MODE_PRIVATE)
 
-    var fastPath: Boolean
-        get() = prefs.getBoolean("fast_path", true)
-        set(v) = prefs.edit().putBoolean("fast_path", v).apply()
-
     var progressiveDisclosure: Boolean
         get() = prefs.getBoolean("progressive_disclosure", true)
         set(v) = prefs.edit().putBoolean("progressive_disclosure", v).apply()

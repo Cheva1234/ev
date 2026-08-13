@@ -22,5 +22,9 @@ data class ToolResult(
 interface Tool {
     val family: String
     val operations: List<String>
+
+    /** Short plain-text usage line, e.g. "MATH: evaluate expressions like 2+3, sin(x), diff(x^2,x)" */
+    val usage: String
+
     suspend fun execute(command: EvclCommand): ToolResult
 }

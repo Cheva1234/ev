@@ -12,6 +12,8 @@ import java.util.Locale
 class WeatherTool : Tool {
     override val family = "WEATHER"
     override val operations = listOf("current", "today", "tomorrow", "forecast")
+    override val usage = "WEATHER: live weather for a named location. Requires network. " +
+        "Examples: @weather current Bangkok, @weather forecast Chiang Mai days:3"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val cmd = command as? EvclCommand.Weather ?: return error("bad command")

@@ -44,7 +44,6 @@ class SettingsFragment : Fragment() {
             "WEATHER\nNetwork only when Weather tool is used\n\n" +
             "MAIL\nDirect provider access"
 
-        bindSwitch(binding.switchFastPath, s.fastPath) { s.fastPath = it }
         bindSwitch(binding.switchDisclosure, s.progressiveDisclosure) { s.progressiveDisclosure = it }
         bindSwitch(binding.switchAutoUnload, s.autoUnload) { s.autoUnload = it }
         bindSwitch(binding.switchRamVerify, s.ramCleanupVerification) { s.ramCleanupVerification = it }

@@ -8,6 +8,7 @@ import com.ev.terminal.tools.ToolStatus
 class LocationTool : Tool {
     override val family = "LOCATION"
     override val operations = listOf("current", "distance", "nearby", "geocode")
+    override val usage = "LOCATION: device location. Example: @loc current"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val cmd = command as? EvclCommand.Location ?: return error("bad command")

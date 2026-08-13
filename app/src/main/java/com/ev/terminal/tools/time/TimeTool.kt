@@ -15,6 +15,7 @@ import java.util.Locale
 class TimeTool : Tool {
     override val family = "TIME"
     override val operations = listOf("now", "zone", "diff", "convert")
+    override val usage = "TIME: current time/date or timezone. Examples: @time now, @time Asia/Tokyo, @time convert Asia/Bangkok UTC"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val cmd = command as? EvclCommand.Time ?: return error("bad command")

@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ev.terminal.R
 import com.ev.terminal.databinding.FragmentChatBinding
+import com.ev.terminal.harness.AgentRunner
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
 import com.ev.terminal.harness.TaskOutcome
@@ -231,22 +232,27 @@ class ChatFragment : Fragment() {
         binding.sendBtn.isEnabled = false
         lifecycleScope.launch {
             try {
-                val outcome: TaskOutcome? = if (text.trim().startsWith("@")) {
-                    runtime.taskManager.runEvcl(text)
+                val directMath = if (text.trim().startsWith("@")) {
+                    null
                 } else {
-                    runtime.fastPath.tryResolve(text)?.let { result ->
-                        TaskOutcome(
-                            taskId = runtime.state.nextTask(),
-                            family = result.family,
-                            result = result,
-                            durationMs = result.durationMs
-                        )
-                    } ?: runModelTask(text)
+                    runtime.agent.tryDirectMath(text)
+                }
+                val outcome: TaskOutcome? = when {
+                    text.trim().startsWith("@") -> runtime.taskManager.runEvcl(text)
+                    directMath != null -> TaskOutcome(
+                        taskId = runtime.state.nextTask(),
+                        family = directMath.family,
+                        result = directMath,
+                        durationMs = directMath.durationMs
+                    )
+                    else -> runAgentTask(text)
                 }
                 when {
                     outcome != null -> {
-                        appendTool(outcome)
-                        if (!outcome.responseStreamed) appendEv(evAnswer(outcome))
+                        if (!outcome.responseStreamed) {
+                            appendTool(outcome)
+                            appendEv(evAnswer(outcome))
+                        }
                     }
                     else -> {
                         appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
@@ -341,30 +347,57 @@ class ChatFragment : Fragment() {
         scrollToBottom()
     }
 
-    private suspend fun runModelTask(text: String): TaskOutcome? {
+    private suspend fun runAgentTask(text: String): TaskOutcome? {
         val supervisor = runtime.modelSupervisor
         if (!supervisor.isInstalled()) return null
 
         withContext(Dispatchers.Main.immediate) { startLiveStream() }
         val stream: suspend (String) -> Unit = { chunk -> streamChunk(chunk) }
 
-        val answerSystem = "Answer the user's request directly in one or two short sentences. " +
-            "Do not show thinking, planning, analysis, or word counts. No commands."
+        val s = runtime.settings
+        val enabledTools = runtime.toolRegistry.families().filterTo(mutableSetOf()) { family ->
+            when (family) {
+                "MATH" -> s.toolMath
+                "TIME" -> s.toolTime
+                "WEATHER" -> s.toolWeather
+                "WEB" -> s.toolWeb
+                "MAIL" -> s.toolMail
+                "LOCATION" -> s.toolLocation
+                else -> false
+            }
+        }
+        val system = AgentRunner.systemPrompt(
+            runtime.toolRegistry.describeTools { it in enabledTools }
+        )
 
         val start = System.currentTimeMillis()
-        val answer = stripThink(
-            supervisor.runTask(answerSystem, "User: $text\nEV:", maxTokens = 96, onChunk = stream).text
-        )
-        withContext(Dispatchers.Main.immediate) { finishLiveStream(answer) }
+        val turn = runtime.agent.run(
+            text,
+            system,
+            onChunk = stream,
+            allowedTools = enabledTools
+        ) { call ->
+            val outcome = TaskOutcome(
+                taskId = runtime.state.nextTask(),
+                family = call.family,
+                result = call.result,
+                durationMs = call.result.durationMs
+            )
+            withContext(Dispatchers.Main.immediate) {
+                appendTool(outcome)
+                liveLabel = "ANSWER"
+            }
+        }
+        withContext(Dispatchers.Main.immediate) { finishLiveStream(stripThink(turn.text)) }
         val durationMs = System.currentTimeMillis() - start
         return TaskOutcome(
             taskId = runtime.state.nextTask(),
-            family = "LFM",
+            family = if (turn.toolCalls.isEmpty()) "LFM" else "LFM+TOOL",
             result = com.ev.terminal.tools.ToolResult(
                 "LFM",
                 com.ev.terminal.tools.ToolStatus.SUCCESS,
-                answer,
-                "LFM_RESULT\nstatus=SUCCESS\nvalue=$answer"
+                turn.text,
+                "LFM_RESULT\nstatus=SUCCESS\nvalue=${turn.text}"
             ),
             durationMs = durationMs,
             responseStreamed = true

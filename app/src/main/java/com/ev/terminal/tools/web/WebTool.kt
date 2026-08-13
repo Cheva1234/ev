@@ -13,6 +13,8 @@ import java.net.URLEncoder
 class WebTool : Tool {
     override val family = "WEB"
     override val operations = listOf("search", "read")
+    override val usage = "WEB: web search for live, current or factual information. Requires network. " +
+        "Examples: @web search Formula Student rules 2026"
 
     override suspend fun execute(command: EvclCommand): ToolResult {
         val cmd = command as? EvclCommand.Web ?: return error("bad command")

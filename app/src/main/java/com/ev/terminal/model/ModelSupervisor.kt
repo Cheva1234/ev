@@ -3,6 +3,7 @@ package com.ev.terminal.model
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import com.ev.terminal.harness.AgentModel
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +31,7 @@ enum class ModelState {
 class ModelSupervisor(
     private val runtime: EVRuntime,
     private val context: Context
-) {
+) : AgentModel {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -124,6 +125,18 @@ class ModelSupervisor(
         _progress.value = null
         runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
     }
+
+    override suspend fun generate(
+        system: String,
+        prompt: String,
+        maxTokens: Int,
+        onChunk: suspend (String) -> Unit
+    ): String = runTask(
+        system = system,
+        prompt = prompt,
+        maxTokens = maxTokens,
+        onChunk = onChunk
+    ).text
 
     suspend fun runTask(
         system: String,

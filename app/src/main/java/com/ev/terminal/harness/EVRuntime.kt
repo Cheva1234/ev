@@ -4,7 +4,6 @@ import android.content.Context
 import com.ev.terminal.model.ModelSupervisor
 import com.ev.terminal.observability.JsonlLogger
 import com.ev.terminal.observability.MemoryMonitor
-import com.ev.terminal.router.FastPath
 import com.ev.terminal.storage.SessionStore
 import com.ev.terminal.storage.SettingsStore
 import com.ev.terminal.tools.ToolRegistry
@@ -27,8 +26,8 @@ class EVRuntime private constructor(context: Context) {
     val memoryMonitor = MemoryMonitor()
     val toolRegistry = ToolRegistry()
     val taskManager = TaskManager(this, toolRegistry)
-    val fastPath = FastPath(toolRegistry)
     val modelSupervisor = ModelSupervisor(this, context)
+    val agent = AgentRunner(modelSupervisor, toolRegistry)
 
     private val _statusLine = MutableStateFlow("IDLE")
     val statusLine: StateFlow<String> = _statusLine.asStateFlow()
