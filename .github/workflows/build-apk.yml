@@ -16,7 +16,19 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      # The runner image ships an Android SDK; accept licenses so AGP can
+      # auto-download any missing platform/build-tools. The archived
+      # android-actions/setup-android action is deliberately not used.
+      - name: Accept Android SDK licenses
+        run: |
+          if command -v sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses >/dev/null || true
+          elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          fi
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon

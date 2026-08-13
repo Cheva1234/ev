@@ -251,7 +251,7 @@ class ChatFragment : Fragment() {
                     outcome != null -> {
                         if (!outcome.responseStreamed) {
                             appendTool(outcome)
-                            appendEv(evAnswer(outcome))
+                            appendEvSplit(evAnswer(outcome))
                         }
                     }
                     else -> {
@@ -338,10 +338,13 @@ class ChatFragment : Fragment() {
         spinnerJob?.cancel()
         spinnerJob = null
         val finalText = text.trim().ifBlank { "(model returned no visible text)" }
-        val updated = entries[index].copy(text = finalText)
+        val bubbles = AnswerSplitter.split(finalText)
+        val first = bubbles.firstOrNull() ?: "(model returned no visible text)"
+        val updated = entries[index].copy(text = first)
         entries[index] = updated
         adapter.update(index, updated)
-        runtime.sessionStore.append(ChatEntry("EV", finalText, ts = now()))
+        runtime.sessionStore.append(ChatEntry("EV", first, ts = now()))
+        bubbles.drop(1).forEach { appendEv(it) }
         liveEntryIndex = null
         liveRaw.clear()
         scrollToBottom()
@@ -406,9 +409,12 @@ class ChatFragment : Fragment() {
 
     private fun stripThink(text: String): String {
         var result = text
-        if (result.contains(" response")) {
-            result = result.replace(Regex(".*? response", RegexOption.DOT_MATCHES_ALL), "")
-        }
+        // Some model builds prefix the answer with a "response:" label. Strip only
+        // that leading label — never content before an in-text " response" word.
+        result = result.replaceFirst(
+            Regex("^\\s*(?:EV\\s+)?response\\s*[:\\-]\\s*", RegexOption.IGNORE_CASE),
+            ""
+        )
         return result.replace(Regex("<thinking>.*?</thinking>", RegexOption.DOT_MATCHES_ALL), "")
             .trim()
     }
@@ -439,6 +445,15 @@ class ChatFragment : Fragment() {
         adapter.append(entry)
         runtime.sessionStore.append(ChatEntry("EV", text, ts = now()))
         scrollToBottom()
+    }
+
+    private fun appendEvSplit(text: String) {
+        val bubbles = AnswerSplitter.split(text)
+        if (bubbles.isEmpty()) {
+            appendEv(text)
+        } else {
+            bubbles.forEach { appendEv(it) }
+        }
     }
 
     private fun appendSystem(text: String) {
