@@ -1,20 +1,11 @@
 package com.ev.terminal.model
 
-import android.content.Context
-import android.os.Environment
-import android.os.StatFs
 import com.ev.terminal.harness.AgentModel
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -29,102 +20,27 @@ enum class ModelState {
 }
 
 class ModelSupervisor(
-    private val runtime: EVRuntime,
-    private val context: Context
+    private val runtime: EVRuntime
 ) : AgentModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    val ggufDownloader = GgufDownloader(context)
-    val backend: EVModelBackend = LlamaCppBackend(context)
-
-    private fun bothReady(): Boolean = ggufDownloader.isDownloaded() && (backend as LlamaCppBackend).cliExists()
-
-    private val _state = MutableStateFlow(
-        if (bothReady()) ModelState.READY
-        else if (ggufDownloader.isDownloaded()) ModelState.ERROR
-        else ModelState.NOT_INSTALLED
+    val backend: EVModelBackend = OllamaBackend(
+        baseUrl = runtime.settings.modelServerUrl,
+        modelName = DEFAULT_OLLAMA_MODEL
     )
-    val state: StateFlow<ModelState> = _state.asStateFlow()
 
-    private val _progress = MutableStateFlow<GgufDownloadProgress?>(null)
-    val progress: StateFlow<GgufDownloadProgress?> = _progress.asStateFlow()
+    // Ollama owns model installation. The app checks availability lazily when
+    // the first request is sent instead of downloading a bundled GGUF file.
+    private val _state = MutableStateFlow(ModelState.READY)
+    val state: StateFlow<ModelState> = _state.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    private var downloadJob: Job? = null
     private val taskMutex = Mutex()
 
-    val modelName: String = "LFM2.5-2.6B Q4_K_M (on-device)"
-    val modelSizeBytes: Long = ggufDownloader.modelSizeBytes
-
-    fun isInstalled(): Boolean = _state.value == ModelState.READY
-
-    fun startDownload() {
-        if (downloadJob?.isActive == true) return
-        _state.value = ModelState.DOWNLOADING
-        _error.value = null
-        runtime.eventBus.emit("model_download_start", "model" to modelName)
-        downloadJob = scope.launch {
-            try {
-                ggufDownloader.progress.collect { p ->
-                    _progress.value = p
-                    runtime.eventBus.emit(
-                        "model_download",
-                        "percent" to String.format("%.1f", p.percent),
-                        "mb" to (p.downloadedBytes / (1024 * 1024))
-                    )
-                }
-            } catch (e: Exception) {
-                // collector cancelled
-            }
-        }
-        scope.launch {
-            try {
-                val dlJob = scope.launch {
-                    ggufDownloader.download()
-                }
-                var lastActivity = System.currentTimeMillis()
-                val watchdog = scope.launch {
-                    while (dlJob.isActive) {
-                        kotlinx.coroutines.delay(5000)
-                        val p = _progress.value
-                        if (p != null && p.downloadedBytes > 0) {
-                            lastActivity = System.currentTimeMillis()
-                        }
-                        if (System.currentTimeMillis() - lastActivity > 30000) {
-                            dlJob.cancel()
-                            throw RuntimeException("download stalled (no progress for 30s)")
-                        }
-                    }
-                }
-                dlJob.join()
-                watchdog.cancel()
-                if (bothReady()) {
-                    _state.value = ModelState.READY
-                    _progress.value = GgufDownloadProgress(modelSizeBytes, modelSizeBytes, 100.0)
-                    runtime.eventBus.emit("model_download_done", "model" to modelName)
-                } else {
-                    val cliOk = (backend as LlamaCppBackend).cliExists()
-                    _state.value = ModelState.ERROR
-                    _error.value = if (!cliOk) "llama-cli binary missing from APK" else "model file incomplete"
-                    runtime.eventBus.emit("model_download_error", "reason" to (_error.value ?: "unknown"))
-                }
-            } catch (e: Exception) {
-                _state.value = ModelState.ERROR
-                _error.value = e.message ?: "download failed"
-                runtime.eventBus.emit("model_download_error", "reason" to (e.message ?: "unknown"))
-            }
-        }
-    }
-
-    fun cancelDownload() {
-        downloadJob?.cancel()
-        _state.value = ModelState.NOT_INSTALLED
-        _progress.value = null
-        runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
-    }
+    val modelName: String = DEFAULT_OLLAMA_MODEL
+    /** Ollama is installed outside the APK; availability is verified by load(). */
+    fun isInstalled(): Boolean = true
 
     override suspend fun generate(
         system: String,
@@ -186,16 +102,7 @@ class ModelSupervisor(
         return response
     }
 
-    fun freeSpaceBytes(): Long {
-        return try {
-            val stat = StatFs(Environment.getDataDirectory().path)
-            stat.availableBytes
-        } catch (e: Exception) {
-            -1
-        }
-    }
-
     fun shutdown() {
-        scope.cancel()
+        // Ollama owns the server lifecycle outside the app process.
     }
 }

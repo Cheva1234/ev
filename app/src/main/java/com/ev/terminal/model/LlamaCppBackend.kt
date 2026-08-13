@@ -139,6 +139,41 @@ internal fun parseCliOutput(output: String, marker: String? = null): String {
         .trim()
 }
 
+/**
+ * Builds a single-turn llama-cli invocation using the model's chat template.
+ *
+ * llama-cli owns the system/user role formatting when conversation mode is
+ * enabled. Passing both prompts as one `-p` value makes an instruct model see
+ * the system instructions as ordinary user text, which can lead to prompt
+ * echoes or tool-only output.
+ */
+internal fun buildLlamaCommand(
+    cli: File,
+    model: File,
+    request: ModelRequest
+): List<String> = buildList {
+    add(cli.absolutePath)
+    addAll(listOf("-m", model.absolutePath))
+    if (request.system.isNotBlank()) {
+        addAll(listOf("-sys", request.system))
+    }
+    addAll(
+        listOf(
+            "-p", request.prompt,
+            "-n", request.maxTokens.toString(),
+            "--temp", request.temperature.toString(),
+            "--top-p", request.topP.toString(),
+            "-c", "2048",
+            "-cnv",
+            "-st",
+            "-t", "4",
+            "--no-warmup",
+            "--no-display-prompt",
+            "--reasoning-budget", "0"
+        )
+    )
+}
+
 class LlamaCppBackend(
     private val context: Context
 ) : EVModelBackend {
@@ -199,34 +234,17 @@ class LlamaCppBackend(
             if (!model.exists()) {
                 throw RuntimeException("model file missing: ${model.absolutePath}")
             }
-            val prompt = if (request.system.isNotBlank()) {
-                "${request.system}\n\n${request.prompt}"
-            } else {
-                request.prompt
-            }
-            val cmd = listOf(
-                cli.absolutePath,
-                "-m", model.absolutePath,
-                "-p", prompt,
-                "-n", request.maxTokens.toString(),
-                "--temp", request.temperature.toString(),
-                "--top-p", request.topP.toString(),
-                "-c", "2048",
-                "-st",
-                "-t", "4",
-                "--no-warmup",
-                "--no-display-prompt",
-                "--no-conversation",
-                "--reasoning-budget", "0"
-            )
-            Log.i("EV_MODEL", "spawning llama-cli with prompt echo disabled and reasoning budget 0")
+            val cmd = buildLlamaCommand(cli, model, request)
+            Log.i("EV_MODEL", "spawning llama-cli in single-turn conversation mode")
             val pb = ProcessBuilder(cmd)
             // stdout is model output; stderr is llama.cpp diagnostics and must not be parsed as text.
             pb.redirectErrorStream(false)
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
-            val streamFilter = ResponseStreamFilter(responseMarker(request.prompt))
+            // Conversation mode applies the model's chat template and does not
+            // echo the raw `User: ... EV:` prompt. Stream generated text directly.
+            val streamFilter = ResponseStreamFilter(null)
             val outputJob = async(Dispatchers.IO) {
                 proc.inputStream.use { input ->
                     collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS) { chunk ->
@@ -253,7 +271,7 @@ class LlamaCppBackend(
                     throw RuntimeException("llama-cli exited $exitCode: ${diagnostics.take(300)}")
                 }
                 val durationMs = System.currentTimeMillis() - start
-                val text = parseCliOutput(output, responseMarker(request.prompt))
+                val text = parseCliOutput(output)
                 Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
                 ModelResponse(
                     text = text,

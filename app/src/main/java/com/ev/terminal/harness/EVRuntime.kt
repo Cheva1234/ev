@@ -26,7 +26,7 @@ class EVRuntime private constructor(context: Context) {
     val memoryMonitor = MemoryMonitor()
     val toolRegistry = ToolRegistry()
     val taskManager = TaskManager(this, toolRegistry)
-    val modelSupervisor = ModelSupervisor(this, context)
+    val modelSupervisor = ModelSupervisor(this)
     val agent = AgentRunner(modelSupervisor, toolRegistry)
 
     private val _statusLine = MutableStateFlow("IDLE")
@@ -37,7 +37,7 @@ class EVRuntime private constructor(context: Context) {
             state.runtimeState.collect { s ->
                 _statusLine.value = when (s) {
                     RuntimeState.IDLE -> "IDLE"
-                    RuntimeState.AI -> "LFM ACTIVE"
+                    RuntimeState.AI -> "QWEN ACTIVE"
                     RuntimeState.TOOL -> "TOOL"
                     RuntimeState.ERROR -> "ERROR"
                 }

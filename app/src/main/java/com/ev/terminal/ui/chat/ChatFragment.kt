@@ -23,7 +23,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class ChatFragment : Fragment() {
 
@@ -126,7 +125,7 @@ class ChatFragment : Fragment() {
             runtime.state.runtimeState.collect { state ->
                 binding.headerState.text = when (state) {
                     RuntimeState.IDLE -> "IDLE"
-                    RuntimeState.AI -> "LFM ACTIVE"
+                    RuntimeState.AI -> "QWEN ACTIVE"
                     RuntimeState.TOOL -> "TOOL"
                     RuntimeState.ERROR -> "ERROR"
                 }
@@ -192,27 +191,18 @@ class ChatFragment : Fragment() {
             "/model" -> {
                 when (args) {
                     "load" -> {
-                        val supervisor = runtime.modelSupervisor
-                        if (supervisor.isInstalled()) {
-                            appendEv("Model already installed.")
-                        } else {
-                            appendEv("Opening model setup...")
-                            com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
-                        }
+                        appendEv("Opening Ollama model setup...")
+                        com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                     else -> {
                         val supervisor = runtime.modelSupervisor
                         val state = supervisor.state.value
-                        val ctx = requireContext()
-                        val libDir = ctx.applicationInfo.nativeLibraryDir
-                        val cli = File(libDir, "libllama-cli.so")
-                        val model = File(ctx.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf")
                         appendEv("MODEL\n\n" +
+                            "${supervisor.modelName}\n\n" +
                             "STATE\n$state\n\n" +
-                            "GGUF FILE\n${if (model.exists()) "present (${model.length() / 1048576} MB)" else "missing"}\n\n" +
-                            "LLAMA-CLI\n${if (cli.exists()) "present ($libDir)" else "missing ($libDir)"}\n\n" +
-                            "ARCH\n${android.os.Build.SUPPORTED_ABIS.joinToString()}\n\n" +
-                            "To install the model, run: /model load")
+                            "BACKEND\nOllama\n\n" +
+                            "SERVER\n${runtime.settings.modelServerUrl}\n\n" +
+                            "To view setup instructions, run: /model load")
                     }
                 }
             }
@@ -255,7 +245,8 @@ class ChatFragment : Fragment() {
                         }
                     }
                     else -> {
-                        appendEv("LFM2.5 is not installed. This request needs reasoning.\n\nInstall it with /model load, or try a direct tool command, e.g. @math 84*9.81, or /help.")
+                        appendEv("Ollama model ${runtime.modelSupervisor.modelName} is not reachable.\n\n" +
+                            "Start Ollama, pull the model, or run /model load for setup instructions.")
                         com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                 }
@@ -395,12 +386,12 @@ class ChatFragment : Fragment() {
         val durationMs = System.currentTimeMillis() - start
         return TaskOutcome(
             taskId = runtime.state.nextTask(),
-            family = if (turn.toolCalls.isEmpty()) "LFM" else "LFM+TOOL",
+            family = if (turn.toolCalls.isEmpty()) "QWEN" else "QWEN+TOOL",
             result = com.ev.terminal.tools.ToolResult(
-                "LFM",
+                "QWEN",
                 com.ev.terminal.tools.ToolStatus.SUCCESS,
                 turn.text,
-                "LFM_RESULT\nstatus=SUCCESS\nvalue=${turn.text}"
+                "QWEN_RESULT\nstatus=SUCCESS\nvalue=${turn.text}"
             ),
             durationMs = durationMs,
             responseStreamed = true

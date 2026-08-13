@@ -59,7 +59,7 @@ class StateStore {
     val memory: StateFlow<MemorySnapshot> = _memory.asStateFlow()
 
     private val _model = MutableStateFlow(
-        ModelSnapshot("LFM2.5-2.6B", "Q4_K_M", "UNLOADED", 0, 0.0, 0, 0, 0, 4096, 0)
+        ModelSnapshot("qwen3.5:0.8b", "Ollama", "UNLOADED", 0, 0.0, 0, 0, 0, 4096, 0)
     )
     val model: StateFlow<ModelSnapshot> = _model.asStateFlow()
 

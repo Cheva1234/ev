@@ -1,11 +1,38 @@
 package com.ev.terminal.model
 
+import java.io.File
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LlamaCppBackendTest {
+
+    @Test
+    fun `llama cli uses conversation mode and keeps system prompt separate`() {
+        val system = "You are EV."
+        val prompt = "User: hello\nEV:"
+
+        val command = buildLlamaCommand(
+            cli = File("/bin/llama-cli"),
+            model = File("/models/ev.gguf"),
+            request = ModelRequest(
+                system = system,
+                prompt = prompt,
+                maxTokens = 64,
+                temperature = 0.1f,
+                topP = 0.9f
+            )
+        )
+
+        assertTrue(command.contains("-cnv"))
+        assertTrue(command.contains("-st"))
+        assertFalse(command.contains("--no-conversation"))
+        assertEquals(system, command[command.indexOf("-sys") + 1])
+        assertEquals(prompt, command[command.indexOf("-p") + 1])
+    }
 
     @Test
     fun `process output is bounded even when model emits no newlines`() = runBlocking {
