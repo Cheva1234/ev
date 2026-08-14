@@ -200,6 +200,24 @@ class AgentRunnerTest {
     }
 
     @Test
+    fun `system prompt avoids transcript examples that the small model may imitate`() {
+        val prompt = AgentRunner.systemPrompt("MATH: pure arithmetic")
+
+        assertTrue(prompt.contains("Never output analysis"))
+        assertTrue(!prompt.contains("Example: User:"))
+    }
+
+    @Test
+    fun `model receives the request without synthetic transcript labels`() = runBlocking {
+        val model = FakeModel(listOf("Hello there."))
+        val runner = AgentRunner(model, registry)
+
+        runner.run("hi", AgentRunner.systemPrompt("MATH: pure arithmetic"), {})
+
+        assertEquals("hi", model.prompts.single())
+    }
+
+    @Test
     fun `full system prompt echo is blanked so the loop retries`() {
         val system = AgentRunner.systemPrompt("MATH: pure arithmetic")
         val guard = PromptLeakGuard(system)

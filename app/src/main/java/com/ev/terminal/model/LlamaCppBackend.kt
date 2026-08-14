@@ -23,10 +23,16 @@ private val CLI_DIAGNOSTIC_PREFIXES = listOf(
     "offloaded", "init_"
 )
 
+private val CLI_UI_PREFIXES = listOf(
+    "build", "model", "type", "modalities", "using custom system prompt",
+    "available commands", "selected model"
+)
+
 private fun isCliDiagnosticLine(line: String): Boolean {
-    val normalized = line.trim().lowercase(Locale.US)
+    val normalized = line.trim().lowercase(Locale.US).replace(Regex("\\s+"), " ")
     return normalized.matches(Regex("^[|/\\\\—-]+$")) ||
-        CLI_DIAGNOSTIC_PREFIXES.any { normalized.startsWith(it) }
+        CLI_DIAGNOSTIC_PREFIXES.any { normalized.startsWith(it) } ||
+        CLI_UI_PREFIXES.any { normalized.startsWith(it) && normalized.contains(":") }
 }
 
 /**
@@ -118,12 +124,30 @@ internal fun parseCliOutput(output: String, marker: String? = null): String {
             text = text.substring(markerIndex + marker.length)
         }
     }
+
+    // Older Android llama-cli builds emit a terminal transcript even when the
+    // prompt-display flag is set. Keep only generated text after its EV: marker
+    // so the built-in command help cannot reach the chat bubble.
+    val userMarker = text.indexOf("User:")
+    val evMarker = text.lastIndexOf("EV:")
+    if (userMarker >= 0 && evMarker > userMarker) {
+        text = text.substring(evMarker + "EV:".length)
+    }
+
+    text = text.replace(
+        Regex("(?is)<think(?:ing)?\\b[^>]*>.*?</think(?:ing)?\\s*>"),
+        ""
+    )
+    text = text.replace(
+        Regex("(?is)\\[start thinking\\].*?(?:\\[end thinking\\]|$)"),
+        ""
+    )
     if (text.contains("[End thinking]")) {
         text = text.substringAfterLast("[End thinking]")
     }
+    text = text.replace(Regex("(?is)\\s*\\[end of text\\].*"), "")
     text = text.substringBefore("[ Prompt:")
     text = text.substringBefore("Exiting...")
-    text = text.replace(Regex("\\[Start thinking\\].*?\\[End thinking\\]", RegexOption.DOT_MATCHES_ALL), "")
 
     return text.lineSequence()
         .filterNot(::isCliDiagnosticLine)
@@ -161,6 +185,7 @@ internal fun buildLlamaCommand(
             "-t", "4",
             "--no-warmup",
             "--no-display-prompt",
+            "--reasoning", "off",
             "--reasoning-budget", "0"
         )
     )

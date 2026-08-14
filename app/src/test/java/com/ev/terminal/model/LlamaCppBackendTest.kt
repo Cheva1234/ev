@@ -35,6 +35,17 @@ class LlamaCppBackendTest {
     }
 
     @Test
+    fun `llama cli disables reasoning for concise app responses`() {
+        val command = buildLlamaCommand(
+            cli = File("/bin/llama-cli"),
+            model = File("/models/ev.gguf"),
+            request = ModelRequest(system = "EV", prompt = "hello", maxTokens = 64)
+        )
+
+        assertEquals("off", command[command.indexOf("--reasoning") + 1])
+    }
+
+    @Test
     fun `process output is bounded even when model emits no newlines`() = runBlocking {
         val output = ByteArrayInputStream("x".repeat(1_000_000).toByteArray())
 
@@ -77,6 +88,32 @@ class LlamaCppBackendTest {
         val echoed = "system instructions\nUser: helloEV:\nHello! How can I help?"
 
         assertEquals("Hello! How can I help?", parseCliOutput(echoed, "EV:"))
+    }
+
+    @Test
+    fun `cli parser removes qwen thinking tags and end marker`() {
+        val output = "<think>internal reasoning</think>\nHello! [end of text]\n"
+
+        assertEquals("Hello!", parseCliOutput(output))
+    }
+
+    @Test
+    fun `cli parser does not expose legacy interactive thinking transcript`() {
+        val output = """
+            build      : b10369
+            model      : /data/user/0/com.ev.terminal/files/.ev/models/qwen.gguf
+            type       : Q4_0
+            modalities : text
+            using custom system prompt
+            available commands:
+            /exit or Ctrl+C stop or exit
+            User: Hello
+            EV:
+            [Start thinking] Thinking Process:
+            Constraint Check: answer directly
+        """.trimIndent()
+
+        assertEquals("", parseCliOutput(output))
     }
 
     @Test
