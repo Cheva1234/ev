@@ -31,15 +31,15 @@ class SettingsFragment : Fragment() {
         runtime = EVRuntime.get(requireContext())
         val s = runtime.settings
 
-        binding.valueModel.text = "qwen3.5:0.8b\n\n" +
-            "Backend\nOllama\n\n" +
-            "Server\n${s.modelServerUrl}\n\n" +
+        binding.valueModel.text = "${runtime.modelSupervisor.modelName}\n\n" +
+            "Backend\nllama.cpp (on-device)\n\n" +
+            "Storage\nBundled in APK\n\n" +
             "Context\n${s.contextSize}\n\n" +
             "Temperature\n${s.temperature}\n\n" +
             "Max output\n${s.maxOutputTokens}\n\n" +
             "Lifecycle\nLoad per task"
 
-        binding.valuePrivacy.text = "AI PROCESSING\nOllama server\n\n" +
+        binding.valuePrivacy.text = "AI PROCESSING\nOn-device\n\n" +
             "CHAT STORAGE\nLocal\n\n" +
             "TASK LOGS\nLocal\n\n" +
             "WEB\nNetwork only when Web tool is used\n\n" +

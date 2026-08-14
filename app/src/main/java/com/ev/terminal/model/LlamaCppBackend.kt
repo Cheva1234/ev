@@ -73,14 +73,6 @@ internal fun sanitizeCliOutput(output: String): String {
         .joinToString("\n")
 }
 
-private fun responseMarker(prompt: String): String? {
-    return when {
-        prompt.trimEnd().endsWith("EVCL:") -> "EVCL:"
-        prompt.trimEnd().endsWith("EV:") -> "EV:"
-        else -> null
-    }
-}
-
 /**
  * Holds model output until the prompt's response marker has been seen.
  *
@@ -186,7 +178,9 @@ class LlamaCppBackend(
     private fun nativeLibDir(): File =
         File(context.applicationInfo.nativeLibraryDir)
 
-    private fun modelFile(): File = File(context.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf")
+    private val bundledModelInstaller = BundledModelInstaller(context)
+
+    private fun modelFile(): File = bundledModelFile(context.filesDir)
 
     private fun cliFile(): File {
         cliBin?.let { if (it.exists()) return it }
@@ -205,7 +199,7 @@ class LlamaCppBackend(
 
     override suspend fun load() {
         withContext(Dispatchers.IO) {
-            val model = modelFile()
+            val model = bundledModelInstaller.ensureInstalled()
             Log.i("EV_MODEL", "model=${model.absolutePath}, exists=${model.exists()}, size=${model.length()}")
             if (!model.exists() || model.length() == 0L) {
                 throw RuntimeException("model file not found or empty: ${model.absolutePath} (size=${model.length()})")
@@ -230,10 +224,7 @@ class LlamaCppBackend(
             val start = System.currentTimeMillis()
             val cli = cliFile()
             cli.setExecutable(true, false)
-            val model = modelFile()
-            if (!model.exists()) {
-                throw RuntimeException("model file missing: ${model.absolutePath}")
-            }
+            val model = bundledModelInstaller.ensureInstalled()
             val cmd = buildLlamaCommand(cli, model, request)
             Log.i("EV_MODEL", "spawning llama-cli in single-turn conversation mode")
             val pb = ProcessBuilder(cmd)
@@ -305,7 +296,7 @@ class LlamaCppBackend(
         }
     }
 
-    override suspend fun status(): ModelStatus = ModelStatus(loaded, "LFM2.5-2.6B Q4_K_M")
+    override suspend fun status(): ModelStatus = ModelStatus(loaded, BUNDLED_MODEL_NAME)
 
     fun cliExists(): Boolean = File(nativeLibDir(), "libllama-cli.so").exists()
     fun modelExists(): Boolean = modelFile().exists() && modelFile().length() > 0

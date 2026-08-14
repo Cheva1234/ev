@@ -1,5 +1,6 @@
 package com.ev.terminal.model
 
+import android.content.Context
 import com.ev.terminal.harness.AgentModel
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
@@ -20,16 +21,12 @@ enum class ModelState {
 }
 
 class ModelSupervisor(
-    private val runtime: EVRuntime
+    private val runtime: EVRuntime,
+    context: Context
 ) : AgentModel {
 
-    val backend: EVModelBackend = OllamaBackend(
-        baseUrl = runtime.settings.modelServerUrl,
-        modelName = DEFAULT_OLLAMA_MODEL
-    )
+    val backend: EVModelBackend = LlamaCppBackend(context)
 
-    // Ollama owns model installation. The app checks availability lazily when
-    // the first request is sent instead of downloading a bundled GGUF file.
     private val _state = MutableStateFlow(ModelState.READY)
     val state: StateFlow<ModelState> = _state.asStateFlow()
 
@@ -38,8 +35,8 @@ class ModelSupervisor(
 
     private val taskMutex = Mutex()
 
-    val modelName: String = DEFAULT_OLLAMA_MODEL
-    /** Ollama is installed outside the APK; availability is verified by load(). */
+    val modelName: String = BUNDLED_MODEL_NAME
+    /** The model is part of the APK and copied to app storage on first use. */
     fun isInstalled(): Boolean = true
 
     override suspend fun generate(
@@ -103,6 +100,6 @@ class ModelSupervisor(
     }
 
     fun shutdown() {
-        // Ollama owns the server lifecycle outside the app process.
+        // Active tasks unload the backend in runTask's finally block.
     }
 }

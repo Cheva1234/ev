@@ -26,7 +26,7 @@ class EVRuntime private constructor(context: Context) {
     val memoryMonitor = MemoryMonitor()
     val toolRegistry = ToolRegistry()
     val taskManager = TaskManager(this, toolRegistry)
-    val modelSupervisor = ModelSupervisor(this)
+    val modelSupervisor = ModelSupervisor(this, context)
     val agent = AgentRunner(modelSupervisor, toolRegistry)
 
     private val _statusLine = MutableStateFlow("IDLE")

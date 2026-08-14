@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # The model is kept as a release asset because GitHub rejects regular
+      # repository files larger than 100 MB.
+      BUNDLED_MODEL_RELEASE: v0.1.1
+      BUNDLED_MODEL_FILE: qwen3.5-0.8b.gguf
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +35,20 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
+      - name: Download bundled Qwen GGUF
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ev-model"
+          gh release download "$BUNDLED_MODEL_RELEASE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$BUNDLED_MODEL_FILE" \
+            --dir "$RUNNER_TEMP/ev-model"
+          test -s "$RUNNER_TEMP/ev-model/$BUNDLED_MODEL_FILE"
+
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon -PevModelFile="$RUNNER_TEMP/ev-model/$BUNDLED_MODEL_FILE"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -39,3 +56,4 @@ jobs:
           name: ev-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          compression-level: 0

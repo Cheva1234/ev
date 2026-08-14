@@ -28,15 +28,13 @@ class ModelSetupDialog(
         val cancelBtn = view.findViewById<TextView>(R.id.setup_cancel)
         val confirmBtn = view.findViewById<TextView>(R.id.setup_confirm)
 
-        info.text = "EV uses Ollama for local model inference.\n\n" +
+        info.text = "EV uses a bundled on-device model.\n\n" +
             "MODEL\n${runtime.modelSupervisor.modelName}\n\n" +
-            "SERVER\n${runtime.settings.modelServerUrl}\n\n" +
+            "BACKEND\nllama.cpp (on-device)\n\n" +
             "SETUP\n" +
-            "1. Install Ollama on the host machine.\n" +
-            "2. Run: ollama pull ${runtime.modelSupervisor.modelName}\n" +
-            "3. Keep Ollama running at the server address above.\n\n" +
-            "Thinking is disabled for every request.\n\n" +
-            "The APK does not download or bundle this model."
+            "The GGUF model is included in this APK.\n" +
+            "On first use, EV copies it to private app storage before starting inference.\n\n" +
+            "No Ollama server or network connection is required for AI processing."
 
         cancelBtn.visibility = android.view.View.GONE
         confirmBtn.text = "CLOSE"

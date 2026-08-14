@@ -191,7 +191,7 @@ class ChatFragment : Fragment() {
             "/model" -> {
                 when (args) {
                     "load" -> {
-                        appendEv("Opening Ollama model setup...")
+                        appendEv("Opening bundled model details...")
                         com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                     else -> {
@@ -200,9 +200,9 @@ class ChatFragment : Fragment() {
                         appendEv("MODEL\n\n" +
                             "${supervisor.modelName}\n\n" +
                             "STATE\n$state\n\n" +
-                            "BACKEND\nOllama\n\n" +
-                            "SERVER\n${runtime.settings.modelServerUrl}\n\n" +
-                            "To view setup instructions, run: /model load")
+                            "BACKEND\nllama.cpp (on-device)\n\n" +
+                            "STORAGE\nBundled in APK\n\n" +
+                            "To view model details, run: /model load")
                     }
                 }
             }
@@ -245,8 +245,8 @@ class ChatFragment : Fragment() {
                         }
                     }
                     else -> {
-                        appendEv("Ollama model ${runtime.modelSupervisor.modelName} is not reachable.\n\n" +
-                            "Start Ollama, pull the model, or run /model load for setup instructions.")
+                        appendEv("Bundled model ${runtime.modelSupervisor.modelName} could not be started.\n\n" +
+                            "The APK may be missing its GGUF asset. Run /model load for model details.")
                         com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                 }
