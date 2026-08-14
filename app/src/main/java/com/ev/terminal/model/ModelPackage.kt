@@ -16,12 +16,12 @@ import java.security.MessageDigest
 import java.util.Locale
 
 internal const val MODEL_PACKAGE_NAME = "qwen3.5:0.8b"
-internal const val MODEL_PACKAGE_FILE_NAME = "qwen3.5-0.8b.gguf"
+internal const val MODEL_PACKAGE_FILE_NAME = "qwen3.5-0.8b-q4_0.gguf"
 internal const val MODEL_PACKAGE_URL =
-    "https://github.com/Cheva1234/ev/releases/download/v0.1.1/qwen3.5-0.8b.gguf"
-internal const val MODEL_PACKAGE_SIZE_BYTES = 1_036_034_688L
+    "https://github.com/Cheva1234/ev/releases/download/v0.1.4/qwen3.5-0.8b-q4_0.gguf"
+internal const val MODEL_PACKAGE_SIZE_BYTES = 563_036_064L
 internal const val MODEL_PACKAGE_SHA256 =
-    "afb707b6b8fac6e475acc42bc8380fc0b8d2e0e4190be5a969fbf62fcc897db5"
+    "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
 
 data class ModelDownloadProgress(
     val downloadedBytes: Long,
@@ -43,6 +43,7 @@ internal fun rangeHeader(existingBytes: Long): String? =
 internal class ModelPackageInstaller(private val context: Context) {
 
     fun isInstalled(): Boolean {
+        removeLegacyModel()
         val target = modelPackageFile(context.filesDir)
         return target.isFile && target.length() == MODEL_PACKAGE_SIZE_BYTES
     }
@@ -204,6 +205,8 @@ internal class ModelPackageInstaller(private val context: Context) {
 
     private fun removeLegacyModel() {
         File(context.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf").delete()
+        File(context.filesDir, ".ev/models/qwen3.5-0.8b.gguf").delete()
+        File(context.filesDir, ".ev/models/qwen3.5-0.8b.gguf.sha256").delete()
     }
 
     private companion object {

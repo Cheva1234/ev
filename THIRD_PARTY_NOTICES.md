@@ -6,18 +6,19 @@ the licenses for these components.
 
 ## Qwen3.5-0.8B model
 
-The app downloads the `qwen3.5-0.8b.gguf` model package separately from the
+The app downloads the `qwen3.5-0.8b-q4_0.gguf` model package separately from the
 APK. The package currently used by the app is identified by this digest:
 
 ```text
-SHA-256: afb707b6b8fac6e475acc42bc8380fc0b8d2e0e4190be5a969fbf62fcc897db5
+SHA-256: 57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf
 ```
 
 The upstream Qwen3.5-0.8B model card identifies the model as Apache-2.0:
 
 - Model card: <https://huggingface.co/Qwen/Qwen3.5-0.8B>
 - License: <https://huggingface.co/Qwen/Qwen3.5-0.8B/blob/main/LICENSE>
-- Download package used by EV: <https://github.com/Cheva1234/ev/releases/tag/v0.1.1>
+- GGUF conversion source: <https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF>
+- Download package used by EV: <https://github.com/Cheva1234/ev/releases/tag/v0.1.4>
 
 The model is optional runtime data. It is not part of the source repository or
 the APK; users download it through the in-app model setup dialog.
