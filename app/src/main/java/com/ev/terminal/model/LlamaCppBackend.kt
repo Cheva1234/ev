@@ -178,9 +178,9 @@ class LlamaCppBackend(
     private fun nativeLibDir(): File =
         File(context.applicationInfo.nativeLibraryDir)
 
-    private val bundledModelInstaller = BundledModelInstaller(context)
+    private val modelPackageInstaller = ModelPackageInstaller(context)
 
-    private fun modelFile(): File = bundledModelFile(context.filesDir)
+    private fun modelFile(): File = modelPackageFile(context.filesDir)
 
     private fun cliFile(): File {
         cliBin?.let { if (it.exists()) return it }
@@ -199,7 +199,7 @@ class LlamaCppBackend(
 
     override suspend fun load() {
         withContext(Dispatchers.IO) {
-            val model = bundledModelInstaller.ensureInstalled()
+            val model = modelPackageInstaller.ensureInstalled()
             Log.i("EV_MODEL", "model=${model.absolutePath}, exists=${model.exists()}, size=${model.length()}")
             if (!model.exists() || model.length() == 0L) {
                 throw RuntimeException("model file not found or empty: ${model.absolutePath} (size=${model.length()})")
@@ -224,7 +224,7 @@ class LlamaCppBackend(
             val start = System.currentTimeMillis()
             val cli = cliFile()
             cli.setExecutable(true, false)
-            val model = bundledModelInstaller.ensureInstalled()
+            val model = modelPackageInstaller.ensureInstalled()
             val cmd = buildLlamaCommand(cli, model, request)
             Log.i("EV_MODEL", "spawning llama-cli in single-turn conversation mode")
             val pb = ProcessBuilder(cmd)
@@ -296,7 +296,7 @@ class LlamaCppBackend(
         }
     }
 
-    override suspend fun status(): ModelStatus = ModelStatus(loaded, BUNDLED_MODEL_NAME)
+    override suspend fun status(): ModelStatus = ModelStatus(loaded, MODEL_PACKAGE_NAME)
 
     fun cliExists(): Boolean = File(nativeLibDir(), "libllama-cli.so").exists()
     fun modelExists(): Boolean = modelFile().exists() && modelFile().length() > 0

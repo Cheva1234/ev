@@ -4,34 +4,40 @@ EV is an Android terminal-style assistant for Project Aether. It combines a loca
 
 ## Current model
 
-The APK bundles the Qwen model below and runs it on-device through `llama.cpp`:
+The app downloads the Qwen model below on first use and runs it on-device through
+`llama.cpp`:
 
 ```text
 qwen3.5:0.8b
 ```
 
-The model is packaged as an uncompressed GGUF asset and copied to private app storage on first use. No Ollama server is required.
+The model is not bundled in the APK. This keeps the install package small. Open
+the model dialog and press **DOWNLOAD** (or run `/model load` in the app) to
+download it into private app storage. The download shows progress, resumes a
+partial `.part` file, verifies SHA-256, and only then installs the model. No
+Ollama server is required.
+
+The model package is served from the
+[v0.1.1 GitHub release](https://github.com/Cheva1234/ev/releases/tag/v0.1.1):
+
+```text
+File:   qwen3.5-0.8b.gguf
+Size:   1,036,034,688 bytes
+SHA256: afb707b6b8fac6e475acc42bc8380fc0b8d2e0e4190be5a969fbf62fcc897db5
+```
 
 ## Requirements
 
 - Android Studio or the Android SDK
 - Java 17
 - Gradle 8.9 through the included wrapper
-- A local `qwen3.5:0.8b` GGUF file when building locally
-
-The model binary is intentionally not committed to Git because it is about 1 GB and exceeds GitHub's regular file limit. Set `EV_MODEL_FILE` to the GGUF path before building:
-
-```bash
-EV_MODEL_FILE=/path/to/qwen3.5-0.8b.gguf ./gradlew assembleDebug
-```
-
-The GitHub Actions workflow downloads the same model from the model release asset and passes it to Gradle automatically.
+- Network access on the device when downloading the model in the app
 
 ## Build and test
 
 ```bash
 ./gradlew test
-EV_MODEL_FILE=/path/to/qwen3.5-0.8b.gguf ./gradlew assembleDebug
+./gradlew assembleDebug
 ```
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
@@ -42,7 +48,8 @@ The debug APK is generated under `app/build/outputs/apk/debug/`.
 ChatFragment
     -> AgentRunner
         -> ModelSupervisor
-            -> LlamaCppBackend -> bundled Qwen GGUF
+            -> ModelPackageInstaller -> downloaded Qwen GGUF
+            -> LlamaCppBackend -> app-private Qwen GGUF
         -> ToolRegistry
             -> math, time, weather, web, mail, location tools
 ```
@@ -50,19 +57,25 @@ ChatFragment
 - `ChatFragment` owns the Android chat UI and session display.
 - `AgentRunner` decides whether the model should answer directly or emit a tool command, executes allowed tools, and feeds tool results back to the model.
 - `ModelSupervisor` serializes model tasks and records runtime events.
-- `LlamaCppBackend` runs the bundled model with the native `llama-cli` binary and streams generated output.
-- `BundledModelInstaller` copies the APK asset to app-private storage and removes the obsolete LFM model file from older installations.
+- `ModelPackageInstaller` downloads the model with resume support, checks its size and SHA-256 digest, and atomically moves it into app-private storage.
+- `LlamaCppBackend` runs the downloaded model with the native `llama-cli` binary and streams generated output.
 - `ToolRegistry` is the extension point for new capabilities.
 
 ## Useful commands in the app
 
 - `/help` — show available commands
 - `/status` — show session and runtime state
-- `/model` — show the bundled model state
-- `/model load` — show bundled model details
+- `/model` — show the downloaded model state
+- `/model load` — show model details and open the download dialog when needed
 - `/tools` — show available tools
 - `/new` — start a new session
 
 ## Project status
 
-This is an active student project focused on learning backend boundaries, model orchestration, tool execution, and Android integration. The next useful improvements are streamed model cancellation, device-specific performance tuning, and integration tests against a real Android runtime.
+This is an active student project focused on learning backend boundaries, model orchestration, tool execution, and Android integration. The next useful improvements are device-specific performance tuning and integration tests against a real Android runtime.
+
+## License
+
+The project source is licensed under the Apache License 2.0. See
+[LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+the project and dependency/model attribution details.

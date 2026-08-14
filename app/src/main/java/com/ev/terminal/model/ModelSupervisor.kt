@@ -4,9 +4,12 @@ import android.content.Context
 import com.ev.terminal.harness.AgentModel
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -25,19 +28,69 @@ class ModelSupervisor(
     context: Context
 ) : AgentModel {
 
+    private val modelPackage = ModelPackageInstaller(context)
     val backend: EVModelBackend = LlamaCppBackend(context)
 
-    private val _state = MutableStateFlow(ModelState.READY)
+    private val _state = MutableStateFlow(
+        if (modelPackage.isInstalled()) ModelState.READY else ModelState.NOT_INSTALLED
+    )
     val state: StateFlow<ModelState> = _state.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    private val taskMutex = Mutex()
+    private val _progress = MutableStateFlow<ModelDownloadProgress?>(null)
+    val progress: StateFlow<ModelDownloadProgress?> = _progress.asStateFlow()
 
-    val modelName: String = BUNDLED_MODEL_NAME
-    /** The model is part of the APK and copied to app storage on first use. */
-    fun isInstalled(): Boolean = true
+    private val taskMutex = Mutex()
+    private var downloadJob: Job? = null
+
+    val modelName: String = MODEL_PACKAGE_NAME
+    /** The model is downloaded separately and stored in app-private storage. */
+    fun isInstalled(): Boolean = modelPackage.isInstalled()
+
+    fun partialDownloadBytes(): Long = modelPackage.partialBytes()
+
+    fun startDownload() {
+        if (downloadJob?.isActive == true) return
+
+        _error.value = null
+        _state.value = ModelState.DOWNLOADING
+        _progress.value = ModelDownloadProgress(modelPackage.partialBytes())
+        runtime.eventBus.emit("model_download_start", "model" to modelName)
+
+        downloadJob = runtime.scope.launch {
+            try {
+                modelPackage.download { progress ->
+                    _progress.value = progress
+                    runtime.eventBus.emit(
+                        "model_download",
+                        "percent" to progress.percent,
+                        "mb" to (progress.downloadedBytes / (1024 * 1024))
+                    )
+                }
+                _state.value = ModelState.READY
+                runtime.eventBus.emit("model_download_done", "model" to modelName)
+            } catch (cancelled: CancellationException) {
+                _state.value = if (modelPackage.isInstalled()) {
+                    ModelState.READY
+                } else {
+                    ModelState.NOT_INSTALLED
+                }
+                runtime.eventBus.emit("model_download_cancelled", "model" to modelName)
+            } catch (error: Exception) {
+                _state.value = ModelState.ERROR
+                _error.value = error.message ?: "model download failed"
+                runtime.eventBus.emit("model_download_error", "reason" to (_error.value ?: "unknown"))
+            } finally {
+                downloadJob = null
+            }
+        }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+    }
 
     override suspend fun generate(
         system: String,
@@ -100,6 +153,7 @@ class ModelSupervisor(
     }
 
     fun shutdown() {
-        // Active tasks unload the backend in runTask's finally block.
+        downloadJob?.cancel()
+        // Active inference tasks unload the backend in runTask's finally block.
     }
 }

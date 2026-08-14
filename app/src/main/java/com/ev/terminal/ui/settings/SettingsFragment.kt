@@ -33,7 +33,7 @@ class SettingsFragment : Fragment() {
 
         binding.valueModel.text = "${runtime.modelSupervisor.modelName}\n\n" +
             "Backend\nllama.cpp (on-device)\n\n" +
-            "Storage\nBundled in APK\n\n" +
+            "Storage\nDownloaded separately\n\n" +
             "Context\n${s.contextSize}\n\n" +
             "Temperature\n${s.temperature}\n\n" +
             "Max output\n${s.maxOutputTokens}\n\n" +

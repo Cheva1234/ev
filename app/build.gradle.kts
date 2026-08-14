@@ -1,25 +1,6 @@
-import org.gradle.api.tasks.Sync
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-}
-
-val bundledModelAssetsDir = layout.buildDirectory.dir("generated/bundled-model-assets")
-val bundledModelSource = providers.gradleProperty("evModelFile")
-    .orElse(providers.environmentVariable("EV_MODEL_FILE"))
-val prepareBundledModel = tasks.register<Sync>("prepareBundledModel") {
-    from(bundledModelSource.map { sourcePath ->
-        val source = file(sourcePath)
-        if (!source.isFile || source.length() == 0L) {
-            throw GradleException("EV model file does not exist or is empty: $sourcePath")
-        }
-        source
-    }) {
-        into("models")
-        rename { "qwen3.5-0.8b.gguf" }
-    }
-    into(bundledModelAssetsDir)
 }
 
 android {
@@ -30,8 +11,8 @@ android {
         applicationId = "com.ev.terminal"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.2"
+        versionCode = 3
+        versionName = "0.1.3"
     }
 
     buildTypes {
@@ -57,16 +38,6 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
-    }
-    androidResources {
-        noCompress += "gguf"
-    }
-    sourceSets["main"].assets.srcDir(bundledModelAssetsDir)
-}
-
-tasks.configureEach {
-    if (name.matches(Regex("merge.*Assets"))) {
-        dependsOn(prepareBundledModel)
     }
 }
 

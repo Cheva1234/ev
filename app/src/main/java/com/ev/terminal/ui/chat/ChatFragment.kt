@@ -191,7 +191,7 @@ class ChatFragment : Fragment() {
             "/model" -> {
                 when (args) {
                     "load" -> {
-                        appendEv("Opening bundled model details...")
+                        appendEv("Opening model package details...")
                         com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                     else -> {
@@ -201,7 +201,7 @@ class ChatFragment : Fragment() {
                             "${supervisor.modelName}\n\n" +
                             "STATE\n$state\n\n" +
                             "BACKEND\nllama.cpp (on-device)\n\n" +
-                            "STORAGE\nBundled in APK\n\n" +
+                            "STORAGE\nDownloaded to app-private storage\n\n" +
                             "To view model details, run: /model load")
                     }
                 }
@@ -245,8 +245,8 @@ class ChatFragment : Fragment() {
                         }
                     }
                     else -> {
-                        appendEv("Bundled model ${runtime.modelSupervisor.modelName} could not be started.\n\n" +
-                            "The APK may be missing its GGUF asset. Run /model load for model details.")
+                        appendEv("Model ${runtime.modelSupervisor.modelName} is not installed.\n\n" +
+                            "Run /model load and press DOWNLOAD before starting a chat.")
                         com.ev.terminal.ui.ModelSetupDialog(requireContext(), runtime).show()
                     }
                 }
