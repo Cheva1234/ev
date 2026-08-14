@@ -18,7 +18,7 @@ The upstream Qwen3.5-0.8B model card identifies the model as Apache-2.0:
 - Model card: <https://huggingface.co/Qwen/Qwen3.5-0.8B>
 - License: <https://huggingface.co/Qwen/Qwen3.5-0.8B/blob/main/LICENSE>
 - GGUF conversion source: <https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF>
-- Download package used by EV: <https://github.com/Cheva1234/ev/releases/tag/v0.1.5>
+- Download package used by EV: <https://github.com/Cheva1234/ev/releases/tag/v0.1.4>
 
 The model is optional runtime data. It is not part of the source repository or
 the APK; users download it through the in-app model setup dialog.
