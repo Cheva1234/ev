@@ -18,7 +18,7 @@ import java.util.Locale
 internal const val MODEL_PACKAGE_NAME = "qwen3.5:0.8b"
 internal const val MODEL_PACKAGE_FILE_NAME = "qwen3.5-0.8b-q4_0.gguf"
 internal const val MODEL_PACKAGE_URL =
-    "https://github.com/Cheva1234/ev/releases/download/v0.1.4/qwen3.5-0.8b-q4_0.gguf"
+    "https://github.com/Cheva1234/ev/releases/download/v0.1.5/qwen3.5-0.8b-q4_0.gguf"
 internal const val MODEL_PACKAGE_SIZE_BYTES = 563_036_064L
 internal const val MODEL_PACKAGE_SHA256 =
     "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"

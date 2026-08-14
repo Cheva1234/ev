@@ -12,7 +12,7 @@ class ModelPackageTest {
     fun `model package metadata points to the qwen release asset`() {
         assertEquals("qwen3.5:0.8b", MODEL_PACKAGE_NAME)
         assertEquals("qwen3.5-0.8b-q4_0.gguf", MODEL_PACKAGE_FILE_NAME)
-        assertTrue(MODEL_PACKAGE_URL.endsWith("/v0.1.4/qwen3.5-0.8b-q4_0.gguf"))
+        assertTrue(MODEL_PACKAGE_URL.endsWith("/v0.1.5/qwen3.5-0.8b-q4_0.gguf"))
         assertEquals(563_036_064L, MODEL_PACKAGE_SIZE_BYTES)
         assertEquals(
             "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf",
