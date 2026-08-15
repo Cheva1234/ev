@@ -87,6 +87,34 @@ class AgentRunnerTest {
     }
 
     @Test
+    fun `unknown bare at commands are rejected instead of shown as answers`() = runBlocking {
+        val model = FakeModel(listOf("@me", "@user", "Hello, I am EV."))
+        val runner = AgentRunner(model, registry)
+
+        val turn = runner.run("How are you?", "tools", {})
+
+        assertEquals("Hello, I am EV.", turn.text)
+        assertEquals(3, model.prompts.size)
+        assertTrue(model.prompts[1].contains("unrecognized tool call"))
+    }
+
+    @Test
+    fun `successful time result is returned without a duplicate model tool call`() = runBlocking {
+        val model = FakeModel(listOf("TOOL: @time now"))
+        val runner = AgentRunner(model, registry)
+
+        val turn = runner.run(
+            "what time is it?",
+            AgentRunner.systemPrompt(registry.describeTools()),
+            {}
+        )
+
+        assertEquals(turn.toolCalls.single().result.summary, turn.text)
+        assertEquals("TIME", turn.toolCalls.single().family)
+        assertEquals(1, model.prompts.size)
+    }
+
+    @Test
     fun `calculus answer is rejected until the math tool runs`() = runBlocking {
         val model = FakeModel(
             listOf(

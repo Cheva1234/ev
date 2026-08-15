@@ -147,6 +147,20 @@ class AgentRunner(
                 val call = ToolCall(line, family, command, result)
                 calls += call
                 onToolCall(call)
+                if (result.status == com.ev.terminal.tools.ToolStatus.SUCCESS &&
+                    (family == "TIME" || family == "WEATHER")
+                ) {
+                    // These results are already concise, current facts. Asking
+                    // a small model to rewrite them can produce a second,
+                    // invalid tool call (for example, treating a date as a
+                    // timezone), so finish from the verified tool result.
+                    onChunk(result.summary)
+                    return AgentTurn(
+                        text = result.summary,
+                        toolCalls = calls,
+                        durationMs = System.currentTimeMillis() - start
+                    )
+                }
                 if (family == "MATH" &&
                     result.status == com.ev.terminal.tools.ToolStatus.SUCCESS &&
                     result.summary.contains("$$")
@@ -199,9 +213,10 @@ class AgentRunner(
      * Extracts candidate tool commands from a model response.
      *
      * A `TOOL:`-prefixed line is always a candidate (even when unknown, so the
-     * loop can give ERROR feedback and let the model retry). A bare `@command`
-     * line is only a candidate if it parses to a known family — small models
-     * often omit the TOOL: prefix despite few-shot examples.
+     * loop can give ERROR feedback and let the model retry). A standalone
+     * `@command` line is also a candidate even when its family is unknown;
+     * otherwise malformed model output such as `@me` can be shown as a final
+     * answer instead of being rejected and retried.
      */
     private fun extractCommands(response: String): List<String> {
         val toolPrefix = Regex("^TOOL\\s*:", RegexOption.IGNORE_CASE)
@@ -212,7 +227,7 @@ class AgentRunner(
                 val toolPrefixed = toolPrefix.containsMatchIn(line)
                 val raw = if (toolPrefixed) line.replaceFirst(toolPrefix, "").trim() else line
                 val known = raw.startsWith("@") && EvclParser.parse(raw) !is EvclCommand.Unknown
-                if (known || toolPrefixed) raw else null
+                if (known || toolPrefixed || raw.startsWith("@")) raw else null
             }
     }
 
