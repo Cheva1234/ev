@@ -186,6 +186,7 @@ internal fun buildLlamaCommand(
             "--no-warmup",
             "--no-display-prompt",
             "--reasoning", "off",
+            "--reasoning-format", "none",
             "--reasoning-budget", "0"
         )
     )
