@@ -17,8 +17,10 @@ download it into private app storage. The download shows progress, resumes a
 partial `.part` file, verifies SHA-256, and only then installs the model. No
 Ollama server is required.
 
-The model package is served from the
+The current APK is available from the
 [v0.1.7 GitHub release](https://github.com/Cheva1234/ev/releases/tag/v0.1.7).
+The model package is served from the separate
+[v0.1.4 model release](https://github.com/Cheva1234/ev/releases/tag/v0.1.4).
 It uses the official llama.cpp-compatible Q4_0 conversion published by
 [ggml-org](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF):
 
