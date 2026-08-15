@@ -49,6 +49,17 @@ class LlamaCppBackendTest {
     }
 
     @Test
+    fun `native model load diagnostics are classified for cache recovery`() {
+        assertTrue(
+            isModelLoadFailure(
+                "llama_model_load: error loading model: " +
+                    "qwen35.rope.dimension_sections has wrong array length"
+            )
+        )
+        assertFalse(isModelLoadFailure("sampling failed after generation started"))
+    }
+
+    @Test
     fun `process output is bounded even when model emits no newlines`() = runBlocking {
         val output = ByteArrayInputStream("x".repeat(1_000_000).toByteArray())
 

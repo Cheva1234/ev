@@ -16,12 +16,18 @@ import java.security.MessageDigest
 import java.util.Locale
 
 internal const val MODEL_PACKAGE_NAME = "qwen3.5:0.8b"
-internal const val MODEL_PACKAGE_FILE_NAME = "qwen3.5-0.8b-q4_0.gguf"
+internal const val MODEL_PACKAGE_FILE_NAME = "qwen3.5-0.8b-q4_0-v2.gguf"
 internal const val MODEL_PACKAGE_URL =
     "https://github.com/Cheva1234/ev/releases/download/v0.1.4/qwen3.5-0.8b-q4_0.gguf"
 internal const val MODEL_PACKAGE_SIZE_BYTES = 563_036_064L
 internal const val MODEL_PACKAGE_SHA256 =
     "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
+
+internal val MODEL_PACKAGE_LEGACY_FILE_NAMES = listOf(
+    "lfm2.5-2.6b-q4_k_m.gguf",
+    "qwen3.5-0.8b.gguf",
+    "qwen3.5-0.8b-q4_0.gguf"
+)
 
 data class ModelDownloadProgress(
     val downloadedBytes: Long,
@@ -45,7 +51,14 @@ internal class ModelPackageInstaller(private val context: Context) {
     fun isInstalled(): Boolean {
         removeLegacyModel()
         val target = modelPackageFile(context.filesDir)
-        return target.isFile && target.length() == MODEL_PACKAGE_SIZE_BYTES
+        return target.isFile &&
+            target.length() == MODEL_PACKAGE_SIZE_BYTES &&
+            checksumMarker(target).readTextOrNull() == MODEL_PACKAGE_SHA256
+    }
+
+    fun invalidateInstalledModel() {
+        val target = modelPackageFile(context.filesDir)
+        listOf(target, checksumMarker(target), partialModelFile()).forEach { it.delete() }
     }
 
     fun partialBytes(): Long {
@@ -64,6 +77,7 @@ internal class ModelPackageInstaller(private val context: Context) {
         if (marker.readTextOrNull() != MODEL_PACKAGE_SHA256) {
             val actual = sha256(target)
             if (actual != MODEL_PACKAGE_SHA256) {
+                invalidateInstalledModel()
                 throw IOException("Model checksum mismatch: expected $MODEL_PACKAGE_SHA256, got $actual")
             }
             marker.writeText(MODEL_PACKAGE_SHA256)
@@ -204,9 +218,11 @@ internal class ModelPackageInstaller(private val context: Context) {
         File(target.parentFile, "${target.name}.sha256")
 
     private fun removeLegacyModel() {
-        File(context.filesDir, ".ev/models/lfm2.5-2.6b-q4_k_m.gguf").delete()
-        File(context.filesDir, ".ev/models/qwen3.5-0.8b.gguf").delete()
-        File(context.filesDir, ".ev/models/qwen3.5-0.8b.gguf.sha256").delete()
+        MODEL_PACKAGE_LEGACY_FILE_NAMES.forEach { fileName ->
+            listOf(fileName, "$fileName.sha256", "$fileName.part")
+                .map { File(context.filesDir, ".ev/models/$it") }
+                .forEach { it.delete() }
+        }
     }
 
     private companion object {

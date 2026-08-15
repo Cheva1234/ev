@@ -23,6 +23,9 @@ enum class ModelState {
     ERROR
 }
 
+internal fun modelStateAfterTask(succeeded: Boolean): ModelState =
+    if (succeeded) ModelState.READY else ModelState.ERROR
+
 class ModelSupervisor(
     private val runtime: EVRuntime,
     context: Context
@@ -110,6 +113,7 @@ class ModelSupervisor(
         maxTokens: Int = 128,
         onChunk: suspend (String) -> Unit = {}
     ): ModelResponse = taskMutex.withLock {
+        _error.value = null
         val taskId = runtime.state.nextTask()
         runtime.eventBus.emit("task_start", "task" to taskId)
         runtime.state.setRuntimeState(RuntimeState.AI)
@@ -119,6 +123,8 @@ class ModelSupervisor(
         try {
             backend.load()
         } catch (e: Exception) {
+            _state.value = ModelState.ERROR
+            _error.value = e.message ?: "model load failed"
             runtime.state.setRuntimeState(RuntimeState.ERROR)
             runtime.eventBus.emit("model_load_error", "task" to taskId, "reason" to (e.message ?: "unknown"))
             throw e
@@ -127,8 +133,9 @@ class ModelSupervisor(
         _state.value = ModelState.ACTIVE
         runtime.eventBus.emit("model_loaded", "task" to taskId, "load_ms" to loadMs)
 
+        var succeeded = false
         val response = try {
-            backend.generate(
+            val result = backend.generate(
                 ModelRequest(
                     system = system,
                     prompt = prompt,
@@ -138,6 +145,17 @@ class ModelSupervisor(
                 ),
                 onChunk
             )
+            succeeded = true
+            result
+        } catch (e: Exception) {
+            _state.value = ModelState.ERROR
+            _error.value = e.message ?: "model generation failed"
+            runtime.eventBus.emit(
+                "model_generate_error",
+                "task" to taskId,
+                "reason" to (_error.value ?: "unknown")
+            )
+            throw e
         } finally {
             runtime.eventBus.emit("model_unload", "task" to taskId)
             try {
@@ -145,9 +163,11 @@ class ModelSupervisor(
             } catch (e: Exception) {
                 // best-effort
             }
-            _state.value = ModelState.READY
+            _state.value = modelStateAfterTask(succeeded)
             runtime.eventBus.emit("model_unloaded", "task" to taskId)
-            runtime.state.setRuntimeState(RuntimeState.IDLE)
+            runtime.state.setRuntimeState(
+                if (succeeded) RuntimeState.IDLE else RuntimeState.ERROR
+            )
         }
         return response
     }

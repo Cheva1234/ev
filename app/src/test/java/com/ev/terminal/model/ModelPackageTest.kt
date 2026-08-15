@@ -11,7 +11,8 @@ class ModelPackageTest {
     @Test
     fun `model package metadata points to the qwen release asset`() {
         assertEquals("qwen3.5:0.8b", MODEL_PACKAGE_NAME)
-        assertEquals("qwen3.5-0.8b-q4_0.gguf", MODEL_PACKAGE_FILE_NAME)
+        assertEquals("qwen3.5-0.8b-q4_0-v2.gguf", MODEL_PACKAGE_FILE_NAME)
+        assertTrue(MODEL_PACKAGE_LEGACY_FILE_NAMES.contains("qwen3.5-0.8b-q4_0.gguf"))
         assertTrue(MODEL_PACKAGE_URL.endsWith("/v0.1.4/qwen3.5-0.8b-q4_0.gguf"))
         assertEquals(563_036_064L, MODEL_PACKAGE_SIZE_BYTES)
         assertEquals(
@@ -25,7 +26,7 @@ class ModelPackageTest {
         val filesDir = File("/data/user/0/com.ev.terminal/files")
 
         assertEquals(
-            File(filesDir, ".ev/models/qwen3.5-0.8b-q4_0.gguf"),
+            File(filesDir, ".ev/models/qwen3.5-0.8b-q4_0-v2.gguf"),
             modelPackageFile(filesDir)
         )
         assertEquals("bytes=1024-", rangeHeader(1024))

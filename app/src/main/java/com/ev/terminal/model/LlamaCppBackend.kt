@@ -35,6 +35,13 @@ private fun isCliDiagnosticLine(line: String): Boolean {
         CLI_UI_PREFIXES.any { normalized.startsWith(it) && normalized.contains(":") }
 }
 
+internal fun isModelLoadFailure(diagnostics: String): Boolean {
+    val normalized = diagnostics.lowercase(Locale.US)
+    return normalized.contains("error loading model") ||
+        normalized.contains("failed to load model") ||
+        normalized.contains("dimension_sections")
+}
+
 /**
  * Captures process output without assuming that the child writes newline-delimited text.
  *
@@ -287,7 +294,18 @@ class LlamaCppBackend(
                     Log.i("EV_MODEL", "llama-cli diagnostics: ${diagnostics.take(1000)}")
                 }
                 if (exitCode != 0) {
-                    throw RuntimeException("llama-cli exited $exitCode: ${diagnostics.take(300)}")
+                    val modelLoadFailure = isModelLoadFailure(diagnostics)
+                    if (modelLoadFailure) {
+                        modelPackageInstaller.invalidateInstalledModel()
+                    }
+                    val recovery = if (modelLoadFailure) {
+                        " Model cache was invalidated; run /model load and press DOWNLOAD."
+                    } else {
+                        ""
+                    }
+                    throw RuntimeException(
+                        "llama-cli exited $exitCode: ${diagnostics.take(300)}$recovery"
+                    )
                 }
                 val durationMs = System.currentTimeMillis() - start
                 val text = parseCliOutput(output)
