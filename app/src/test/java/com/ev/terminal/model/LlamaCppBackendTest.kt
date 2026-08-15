@@ -44,6 +44,8 @@ class LlamaCppBackendTest {
 
         assertEquals("off", command[command.indexOf("--reasoning") + 1])
         assertEquals("none", command[command.indexOf("--reasoning-format") + 1])
+        assertTrue(command.contains("--simple-io"))
+        assertTrue(command.contains("--log-disable"))
     }
 
     @Test

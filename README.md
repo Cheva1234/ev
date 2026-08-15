@@ -18,7 +18,7 @@ partial `.part` file, verifies SHA-256, and only then installs the model. No
 Ollama server is required.
 
 The model package is served from the
-[v0.1.6 GitHub release](https://github.com/Cheva1234/ev/releases/tag/v0.1.6).
+[v0.1.7 GitHub release](https://github.com/Cheva1234/ev/releases/tag/v0.1.7).
 It uses the official llama.cpp-compatible Q4_0 conversion published by
 [ggml-org](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF):
 
