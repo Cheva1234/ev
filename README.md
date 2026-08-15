@@ -1,11 +1,95 @@
 # EV Terminal
 
-EV is an Android terminal-style assistant for Project Aether. It combines a local chat interface with a small agent loop and explicit tools for math, time, weather, web search, mail, and location.
+> A tiny AI agent that runs entirely on your Android phone.
+
+No server. No cloud LLM. No always-loaded model.
+
+EV loads a small local model only when model intelligence is needed, calls
+deterministic tools through an explicit harness, and releases model resources
+after the task. The result is an Android agent that is useful without an
+Ollama server or a permanent cloud connection.
+
+[Download APK](https://github.com/Cheva1234/ev/releases/tag/v0.1.8) ·
+[Architecture](#architecture) · [Calculus](#calculus-and-latex)
+
+## Why EV?
+
+- 📱 Runs Qwen3.5-0.8B locally on Android through `llama.cpp`
+- 🧠 Loads the model per task instead of permanently consuming RAM
+- 🛠 Calls deterministic tools for Math, Time, Weather, Web, Mail, and Location
+- 🖥 Provides a terminal-style Chat view plus a live runtime Console
+- ∫ Includes local symbolic calculus with offline KaTeX rendering
+- ☁️ Requires no cloud LLM, Ollama server, or always-on backend
+
+## How it works
+
+The model is small; the harness does the coordination:
+
+```text
+User request
+    |
+    v
+ChatFragment -> AgentRunner -> ModelSupervisor
+                     |              |
+                     |              +-> Qwen3.5-0.8B / llama.cpp
+                     v
+                 ToolRegistry
+                 +-- math
+                 +-- time
+                 +-- weather
+                 +-- web
+                 +-- mail
+                 +-- location
+```
+
+For a tool task, EV routes the request, executes the deterministic tool, and
+records the route, tool result, memory, and task lifecycle in Console. The
+model is available for language understanding and synthesis, but the tool
+does the operation that must be correct.
+
+## Quick install
+
+1. Download the [latest APK release](https://github.com/Cheva1234/ev/releases/tag/v0.1.8).
+2. Install the APK on an Android device.
+3. Open the model setup dialog, press **DOWNLOAD**, and wait for verification.
+4. Try a request such as `find the derivative of x squared`.
+
+The APK does not bundle the model. The first model download is about 563 MB,
+and the app stores it in private storage after resuming and verifying the
+download. The device needs network access for this first setup only; inference
+then runs locally.
+
+## Demo
+
+A real 15–20 second screen recording is the next important project asset. It
+should show one complete local-agent task:
+
+```text
+Chat:    differentiate x^2 sin(x)
+Console: MODEL LOAD -> MATH SUCCESS -> MODEL UNLOAD
+Chat:    2x sin(x) + x^2 cos(x)
+Console: RAM RESTORED -> TASK COMPLETE
+```
+
+The repository does not currently contain that recording, so this README does
+not embed a fabricated GIF. Once recorded on a real device, place it at
+`docs/demo/ev-agent.gif` and add it above this section so visitors can see the
+product behavior before reading the implementation details.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| Math | Numeric expressions, derivatives, antiderivatives, definite integrals, and limits |
+| Time | Current time, date, and timezone |
+| Weather | Live weather lookup when network access is available |
+| Web | Network-backed web lookup |
+| Mail | User mailbox access |
+| Location | Device location access |
 
 ## Current model
 
-The app downloads the Qwen model below on first use and runs it on-device through
-`llama.cpp`:
+The app downloads and runs this model on-device through `llama.cpp`:
 
 ```text
 qwen3.5:0.8b
@@ -17,8 +101,6 @@ download it into private app storage. The download shows progress, resumes a
 partial `.part` file, verifies SHA-256, and only then installs the model. No
 Ollama server is required.
 
-The current APK is available from the
-[v0.1.8 GitHub release](https://github.com/Cheva1234/ev/releases/tag/v0.1.8).
 The model package is served from the separate
 [v0.1.4 model release](https://github.com/Cheva1234/ev/releases/tag/v0.1.4).
 It uses the official llama.cpp-compatible Q4_0 conversion published by
@@ -29,26 +111,6 @@ File:   qwen3.5-0.8b-q4_0.gguf
 Size:   563,036,064 bytes
 SHA256: 57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf
 ```
-
-## Requirements
-
-- Android Studio or the Android SDK
-- Java 17
-- Gradle 8.9 through the included wrapper
-- Network access on the device when downloading the model in the app
-
-## Build and test
-
-```bash
-JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk ./gradlew testDebugUnitTest assembleDebug --no-daemon
-```
-
-The debug APK is generated under `app/build/outputs/apk/debug/`.
-
-The unit-test suite currently covers the agent loop, model backend, tool
-dispatch, calculus engine, and LaTeX HTML generation. Keep the unit tests and
-APK build in the same verification command so a UI change cannot accidentally
-ship without its supporting logic being checked.
 
 ## Calculus and LaTeX
 
@@ -69,7 +131,48 @@ LaTeX and rendered visually in both Chat and Console. The APK bundles KaTeX
 another download. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
 the KaTeX license attribution.
 
-## Device verification with ADB
+## Architecture
+
+```text
+ChatFragment
+    -> AgentRunner
+        -> ModelSupervisor
+            -> ModelPackageInstaller -> downloaded Qwen GGUF
+            -> LlamaCppBackend -> app-private Qwen GGUF
+        -> ToolRegistry
+            -> math, time, weather, web, mail, location tools
+```
+
+- `ChatFragment` owns the Android chat UI and session display.
+- `AgentRunner` decides whether the model should answer directly or emit a tool command, executes allowed tools, and feeds tool results back to the model.
+- `ModelSupervisor` serializes model tasks and records runtime events.
+- `ModelPackageInstaller` downloads the model with resume support, checks its size and SHA-256 digest, and atomically moves it into app-private storage.
+- `LlamaCppBackend` runs the downloaded model with the native `llama-cli` binary and streams generated output.
+- `ToolRegistry` is the extension point for new capabilities.
+
+## Development
+
+### Requirements
+
+- Android Studio or the Android SDK
+- Java 17
+- Gradle 8.9 through the included wrapper
+- Network access on the device when downloading the model in the app
+
+### Build and test
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk ./gradlew testDebugUnitTest assembleDebug --no-daemon
+```
+
+The debug APK is generated under `app/build/outputs/apk/debug/`.
+
+The unit-test suite covers the agent loop, model backend, tool dispatch,
+calculus engine, and LaTeX HTML generation. Keep the unit tests and APK build
+in the same verification command so a UI change cannot accidentally ship
+without its supporting logic being checked.
+
+### Device verification with ADB
 
 Use wireless ADB or USB ADB to install the debug APK without deleting the
 downloaded model:
@@ -95,30 +198,11 @@ download can be verified from the app-private directory with:
   sha256sum files/.ev/models/qwen3.5-0.8b-q4_0-v2.gguf
 ```
 
-The current branch was verified locally on an SM-A736B running Android 16:
-the APK installed successfully, the existing model remained present with the
-expected SHA-256, Chat displayed a typeset derivative, and Console displayed
-the matching successful `MATH` task event. The check completed without an
-app `FATAL EXCEPTION` in logcat.
-
-## Architecture
-
-```text
-ChatFragment
-    -> AgentRunner
-        -> ModelSupervisor
-            -> ModelPackageInstaller -> downloaded Qwen GGUF
-            -> LlamaCppBackend -> app-private Qwen GGUF
-        -> ToolRegistry
-            -> math, time, weather, web, mail, location tools
-```
-
-- `ChatFragment` owns the Android chat UI and session display.
-- `AgentRunner` decides whether the model should answer directly or emit a tool command, executes allowed tools, and feeds tool results back to the model.
-- `ModelSupervisor` serializes model tasks and records runtime events.
-- `ModelPackageInstaller` downloads the model with resume support, checks its size and SHA-256 digest, and atomically moves it into app-private storage.
-- `LlamaCppBackend` runs the downloaded model with the native `llama-cli` binary and streams generated output.
-- `ToolRegistry` is the extension point for new capabilities.
+The current `main` branch was verified locally on an SM-A736B running Android
+16: the APK installed successfully, the existing model remained present with
+the expected SHA-256, Chat displayed a typeset derivative, and Console
+displayed the matching successful `MATH` task event. The check completed
+without an app `FATAL EXCEPTION` in logcat.
 
 ## Useful commands in the app
 
@@ -131,7 +215,10 @@ ChatFragment
 
 ## Project status
 
-This is an active student project focused on learning backend boundaries, model orchestration, tool execution, and Android integration. The next useful improvements are device-specific performance tuning and integration tests against a real Android runtime.
+This is an active student project focused on learning backend boundaries, model
+orchestration, tool execution, and Android integration. The next useful
+improvements are a real device demo recording, release APK packaging, and
+device-specific performance tuning.
 
 ## License
 
