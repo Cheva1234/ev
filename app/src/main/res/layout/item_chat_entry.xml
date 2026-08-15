@@ -24,6 +24,14 @@
         android:textSize="14sp"
         android:lineSpacingExtra="2dp" />
 
+    <WebView
+        android:id="@+id/entry_math_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:overScrollMode="never"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/entry_trace"
         android:layout_width="wrap_content"

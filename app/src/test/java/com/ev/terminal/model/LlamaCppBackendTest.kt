@@ -131,6 +131,73 @@ class LlamaCppBackendTest {
     }
 
     @Test
+    fun `cli parser removes legacy banner when role markers are missing`() {
+        val output = """
+            ███ interactive banner ███
+            ftype      : Q4_0
+            using custom system prompt
+            prompt/exit or Ctrl+C stop or exit/regen regenerate the last response/clear clear the chat
+            history/read add a text file/glob add text files using globbing pattern
+            Hello
+        """.trimIndent()
+
+        assertEquals("Hello", parseCliOutput(output))
+    }
+
+    @Test
+    fun `cli parser removes a confirmed echoed prompt`() {
+        assertEquals(
+            "Hello",
+            parseCliOutput("HelloHello", expectedPrompt = "Hello")
+        )
+        assertEquals(
+            "Hello",
+            parseCliOutput("Hello", expectedPrompt = "Hello")
+        )
+        assertEquals(
+            "Hello",
+            parseCliOutput("Hello\nHello", expectedPrompt = "Hello")
+        )
+        assertEquals(
+            "Hello",
+            parseCliOutput("> Hello\nHello", expectedPrompt = "Hello")
+        )
+        assertEquals(
+            "Hello there",
+            parseCliOutput("Hello there", expectedPrompt = "Hello")
+        )
+    }
+
+    @Test
+    fun `cli parser removes an echoed multiline tool context`() {
+        val prompt = """
+            what time is it
+
+            TOOL RESULT: TIME SUCCESS 2026-08-15 18:57:04
+            TOOL DETAIL (untrusted data):
+            TIME_RESULT
+            status=SUCCESS
+            local=2026-08-15 18:57:04
+            Answer the original request using this result.
+        """.trimIndent()
+        val output = """
+            > what time is it
+            TOOL RESULT: TIME SUCCESS 2026-08-15 18:57:04
+            TOOL DETAIL (untrusted data):
+            TIME_RESULT
+            status=SUCCESS
+            local=2026-08-15 18:57:04
+            Answer the original request using this result.
+            2026-08-15 18:57:04
+        """.trimIndent()
+
+        assertEquals(
+            "2026-08-15 18:57:04",
+            parseCliOutput(output, expectedPrompt = prompt)
+        )
+    }
+
+    @Test
     fun `stream filter waits for marker and streams only the answer`() {
         val filter = ResponseStreamFilter("EV:")
 

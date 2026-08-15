@@ -4,8 +4,8 @@ import java.util.ArrayDeque
 
 object ExpressionEvaluator {
 
-    fun eval(expr: String): Double {
-        val tokens = tokenize(expr)
+    fun eval(expr: String, variables: Map<String, Double> = emptyMap()): Double {
+        val tokens = tokenize(expr, variables.mapKeys { it.key.lowercase() })
         val rpn = shuntingYard(tokens)
         return evaluateRpn(rpn)
     }
@@ -53,7 +53,7 @@ object ExpressionEvaluator {
         "**" to Token.Op("**", 4, true)
     )
 
-    private fun tokenize(expr: String): List<Token> {
+    private fun tokenize(expr: String, variables: Map<String, Double>): List<Token> {
         val tokens = mutableListOf<Token>()
         var i = 0
         val s = expr.trim()
@@ -71,6 +71,7 @@ object ExpressionEvaluator {
                     while (i < s.length && (s[i].isLetterOrDigit() || s[i] == '_')) i++
                     val name = s.substring(start, i).lowercase()
                     when {
+                        variables.containsKey(name) -> tokens.add(Token.Num(variables.getValue(name)))
                         constants.containsKey(name) -> tokens.add(Token.Num(constants[name]!!))
                         functions.containsKey(name) || binaryFunctions.containsKey(name) -> tokens.add(Token.Func(name))
                         else -> throw IllegalArgumentException("unknown function: $name")

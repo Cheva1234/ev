@@ -87,6 +87,44 @@ class AgentRunnerTest {
     }
 
     @Test
+    fun `calculus answer is rejected until the math tool runs`() = runBlocking {
+        val model = FakeModel(
+            listOf(
+                "The derivative is 2x.",
+                "TOOL: @math diff(x^2,x)"
+            )
+        )
+        val runner = AgentRunner(model, registry)
+
+        val turn = runner.run(
+            "Find the derivative of x^2",
+            AgentRunner.systemPrompt(registry.describeTools()),
+            {}
+        )
+
+        assertEquals("$$\\frac{d}{dx}\\left(x^{2}\\right)=2x$$", turn.text)
+        assertEquals("MATH", turn.toolCalls.single().family)
+        assertTrue(turn.toolCalls.single().result.summary.contains("$$"))
+        assertTrue(model.prompts[1].contains("requires the MATH tool"))
+    }
+
+    @Test
+    fun `successful calculus tool result is returned without model rewriting`() = runBlocking {
+        val model = FakeModel(listOf("TOOL: @math diff(x^2,x)"))
+        val runner = AgentRunner(model, registry)
+
+        val turn = runner.run(
+            "Find the derivative of x^2",
+            AgentRunner.systemPrompt(registry.describeTools()),
+            {}
+        )
+
+        assertEquals("$$\\frac{d}{dx}\\left(x^{2}\\right)=2x$$", turn.text)
+        assertEquals(1, turn.toolCalls.size)
+        assertEquals(1, model.prompts.size)
+    }
+
+    @Test
     fun `tool protocol and rejected answers are not streamed to the chat`() = runBlocking {
         val model = FakeModel(
             listOf(
@@ -127,6 +165,8 @@ class AgentRunnerTest {
         assertEquals("WEATHER", ToolRequirementPolicy.requiredFamily("Will it rain tomorrow?"))
         assertEquals("MAIL", ToolRequirementPolicy.requiredFamily("Check my latest email"))
         assertEquals("MATH", ToolRequirementPolicy.requiredFamily("What is 12 * 7?"))
+        assertEquals("MATH", ToolRequirementPolicy.requiredFamily("Find the derivative of x^2"))
+        assertEquals("MATH", ToolRequirementPolicy.requiredFamily("Evaluate the integral of sin(x)"))
         assertEquals("WEB", ToolRequirementPolicy.requiredFamily("Search the web for EV news"))
         assertNull(ToolRequirementPolicy.requiredFamily("Explain time complexity"))
     }

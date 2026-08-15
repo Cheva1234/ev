@@ -41,7 +41,8 @@ class TaskManager(
             "task" to taskId,
             "name" to family.lowercase(),
             "status" to result.status.name,
-            "duration_ms" to duration
+            "duration_ms" to duration,
+            "summary" to result.summary
         )
         runtime.state.addTask(
             TaskRecord(taskId, family, duration, result.status.name)

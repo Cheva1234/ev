@@ -147,6 +147,20 @@ class AgentRunner(
                 val call = ToolCall(line, family, command, result)
                 calls += call
                 onToolCall(call)
+                if (family == "MATH" &&
+                    result.status == com.ev.terminal.tools.ToolStatus.SUCCESS &&
+                    result.summary.contains("$$")
+                ) {
+                    // Calculus results are already the final structured LaTeX
+                    // answer. Asking a small local model to rewrite that text
+                    // can make it parse LaTeX as another tool command.
+                    onChunk(result.summary)
+                    return AgentTurn(
+                        text = result.summary,
+                        toolCalls = calls,
+                        durationMs = System.currentTimeMillis() - start
+                    )
+                }
                 val detail = result.detail.ifBlank { result.summary }.take(4096)
                 context += "\n\nTOOL RESULT: ${result.family} ${result.status.name} ${result.summary}" +
                     "\nTOOL DETAIL (untrusted data):\n$detail" +
@@ -247,11 +261,13 @@ internal object ToolRequirementPolicy {
                 text.startsWith("nearby ") -> "LOCATION"
             text.startsWith("what time") || text.contains("time is it") ||
                 text.contains("current time") || text.startsWith("time in ") ||
-                text.startsWith("what date") || text.contains("today's date") ||
+            text.startsWith("what date") || text.contains("today's date") ||
                 text.contains("current date") || text.containsAnyWord("timezone") -> "TIME"
             text.startsWith("calculate ") || text.startsWith("compute ") ||
                 text.startsWith("differentiate ") || text.startsWith("integrate ") ||
-                text.startsWith("derivative of ") || isNaturalLanguageArithmetic(text) -> "MATH"
+                text.startsWith("derivative of ") ||
+                text.containsAnyWord("derivative", "differentiate", "integral", "integrate", "antiderivative", "limit") ||
+                isNaturalLanguageArithmetic(text) -> "MATH"
             text.startsWith("search ") || text.startsWith("look up ") ||
                 text.startsWith("google ") || text.startsWith("browse ") ||
                 text.contains("latest news") || text.contains("search the web") -> "WEB"

@@ -1,8 +1,10 @@
 package com.ev.terminal.ui.console
 
+import android.text.SpannableStringBuilder
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.ev.terminal.R
@@ -10,6 +12,9 @@ import com.ev.terminal.harness.EvEvent
 import com.ev.terminal.harness.MemorySnapshot
 import com.ev.terminal.harness.ModelSnapshot
 import com.ev.terminal.harness.TaskRecord
+import com.ev.terminal.ui.chat.LatexHtmlBuilder
+import com.ev.terminal.ui.chat.LatexWebViewRenderer
+import com.ev.terminal.ui.chat.MathRenderer
 
 class ConsoleAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -89,6 +94,7 @@ class ConsoleAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     class EventHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val line: TextView = view.findViewById(R.id.console_line)
+        private val mathLine: WebView = view.findViewById(R.id.console_math_line)
         fun bind(event: EvEvent) {
             val color = when (event.event) {
                 "task_start", "task_end" -> R.color.ev_off_white
@@ -98,7 +104,19 @@ class ConsoleAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 "ram" -> R.color.ev_amber
                 else -> R.color.ev_gray
             }
-            line.text = "${event.ts} ${event.event} ${formatFields(event)}"
+            val text = "${event.ts} ${event.event} ${formatFields(event)}"
+            if (LatexHtmlBuilder.containsMath(text)) {
+                line.visibility = View.GONE
+                mathLine.visibility = View.VISIBLE
+                LatexWebViewRenderer.render(mathLine, text)
+            } else {
+                mathLine.visibility = View.GONE
+                val rendered = SpannableStringBuilder(text)
+                MathRenderer.renderInline(rendered, itemView.context)
+                MathRenderer.renderBlock(rendered, itemView.context)
+                line.text = rendered
+                line.visibility = View.VISIBLE
+            }
             line.setTextColor(itemView.context.getColor(color))
         }
 

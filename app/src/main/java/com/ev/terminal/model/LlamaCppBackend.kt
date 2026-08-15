@@ -27,6 +27,16 @@ private val CLI_UI_PREFIXES = listOf(
     "build", "model", "type", "modalities", "using custom system prompt",
     "available commands", "selected model"
 )
+private val CLI_INTERACTIVE_BANNER_MARKERS = listOf(
+    "using custom system prompt",
+    "available commands",
+    "prompt/exit",
+    "regenerate the last response",
+    "clear the chat",
+    "history/read",
+    "add a text file/glob",
+    "add text files using globbing pattern"
+)
 
 private fun isCliDiagnosticLine(line: String): Boolean {
     val normalized = line.trim().lowercase(Locale.US).replace(Regex("\\s+"), " ")
@@ -40,6 +50,55 @@ internal fun isModelLoadFailure(diagnostics: String): Boolean {
     return normalized.contains("error loading model") ||
         normalized.contains("failed to load model") ||
         normalized.contains("dimension_sections")
+}
+
+private fun stripLegacyInteractiveBanner(text: String): String {
+    val lines = text.lines()
+    val lastBannerLine = lines.indexOfLast { line ->
+        val normalized = line.trim().lowercase(Locale.US).replace(Regex("\\s+"), " ")
+        CLI_INTERACTIVE_BANNER_MARKERS.any(normalized::contains)
+    }
+    return if (lastBannerLine >= 0) {
+        lines.drop(lastBannerLine + 1).joinToString("\n").trimStart()
+    } else {
+        text
+    }
+}
+
+private fun stripConfirmedPromptEcho(text: String, prompt: String?): String {
+    val expectedPrompt = prompt?.trim()?.takeIf { it.isNotEmpty() } ?: return text
+    val candidate = text.trimStart()
+    val repeatedPrompt = expectedPrompt + expectedPrompt
+
+    // A few Android llama-cli builds print the submitted prompt immediately
+    // before the generated answer, even with --no-display-prompt. Only strip
+    // an echo when the next visible text starts with the same complete prompt;
+    // this avoids changing a legitimate answer that merely begins with one
+    // prompt word.
+    if (candidate.startsWith(repeatedPrompt)) {
+        return candidate.removePrefix(expectedPrompt).trimStart()
+    }
+
+    val expectedLines = expectedPrompt.lines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    val candidateLines = candidate.lines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    if (candidateLines.size <= expectedLines.size || expectedLines.isEmpty()) return text
+
+    val firstLine = candidateLines.first()
+    val firstPromptLine = expectedLines.first()
+    val firstLineMatches = firstLine == firstPromptLine || firstLine == "> $firstPromptLine"
+    if (!firstLineMatches) return text
+
+    val echoedPromptMatches = expectedLines.drop(1).withIndex().all { (index, expectedLine) ->
+        candidateLines.getOrNull(index + 1) == expectedLine
+    }
+    if (echoedPromptMatches) {
+        return candidateLines.drop(expectedLines.size).joinToString("\n").trimStart()
+    }
+    return text
 }
 
 /**
@@ -123,7 +182,11 @@ internal class ResponseStreamFilter(private val marker: String?) {
     }
 }
 
-internal fun parseCliOutput(output: String, marker: String? = null): String {
+internal fun parseCliOutput(
+    output: String,
+    marker: String? = null,
+    expectedPrompt: String? = null
+): String {
     var text = sanitizeCliOutput(output)
     if (marker != null) {
         val markerIndex = text.lastIndexOf(marker)
@@ -131,6 +194,11 @@ internal fun parseCliOutput(output: String, marker: String? = null): String {
             text = text.substring(markerIndex + marker.length)
         }
     }
+
+    // Some Android llama-cli builds emit the interactive command banner even
+    // when single-turn flags are supplied. Drop it before any UI receives the
+    // completed response, including builds whose role markers are malformed.
+    text = stripLegacyInteractiveBanner(text)
 
     // Older Android llama-cli builds emit a terminal transcript even when the
     // prompt-display flag is set. Keep only generated text after its EV: marker
@@ -152,14 +220,16 @@ internal fun parseCliOutput(output: String, marker: String? = null): String {
     if (text.contains("[End thinking]")) {
         text = text.substringAfterLast("[End thinking]")
     }
+    text = stripConfirmedPromptEcho(text, expectedPrompt)
     text = text.replace(Regex("(?is)\\s*\\[end of text\\].*"), "")
     text = text.substringBefore("[ Prompt:")
     text = text.substringBefore("Exiting...")
 
     return text.lineSequence()
-        .filterNot(::isCliDiagnosticLine)
+        .filterNot { it.isBlank() || isCliDiagnosticLine(it) }
         .joinToString("\n")
         .trim()
+        .ifBlank { "" }
 }
 
 /**
@@ -268,15 +338,13 @@ class LlamaCppBackend(
             pb.environment()["LD_LIBRARY_PATH"] = nativeLibDir().absolutePath
             val proc = pb.start()
             process = proc
-            // Conversation mode applies the model's chat template and does not
-            // echo the raw `User: ... EV:` prompt. Stream generated text directly.
-            val streamFilter = ResponseStreamFilter(null)
+            // Parse the complete process output before rendering it. Some
+            // Android llama-cli builds still write their interactive banner to
+            // stdout despite the single-turn flags; streaming raw chunks would
+            // leak that banner into the chat transcript.
             val outputJob = async(Dispatchers.IO) {
                 proc.inputStream.use { input ->
-                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS) { chunk ->
-                        val cleanChunk = streamFilter.accept(chunk)
-                        if (cleanChunk.isNotEmpty()) onChunk(cleanChunk)
-                    }
+                    collectProcessOutput(input, MAX_PROCESS_OUTPUT_CHARS)
                 }
             }
             val diagnosticJob = async(Dispatchers.IO) {
@@ -308,8 +376,9 @@ class LlamaCppBackend(
                     )
                 }
                 val durationMs = System.currentTimeMillis() - start
-                val text = parseCliOutput(output)
+                val text = parseCliOutput(output, expectedPrompt = request.prompt)
                 Log.i("EV_MODEL", "parsed text length=${text.length}, tok/s=${if (durationMs > 0) text.length / 4.0 * 1000 / durationMs else 0.0}")
+                if (text.isNotEmpty()) onChunk(text)
                 ModelResponse(
                     text = text,
                     durationMs = durationMs,

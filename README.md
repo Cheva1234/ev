@@ -40,11 +40,66 @@ SHA256: 57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf
 ## Build and test
 
 ```bash
-./gradlew test
-./gradlew assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk ./gradlew testDebugUnitTest assembleDebug --no-daemon
 ```
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
+
+The unit-test suite currently covers the agent loop, model backend, tool
+dispatch, calculus engine, and LaTeX HTML generation. Keep the unit tests and
+APK build in the same verification command so a UI change cannot accidentally
+ship without its supporting logic being checked.
+
+## Calculus and LaTeX
+
+The math tool supports numeric expressions plus symbolic derivatives, common
+antiderivatives, definite integrals, and numerical limits:
+
+```text
+@math diff(x^2+sin(x),x)
+@math integrate(x^2,x)
+@math integral(x^2,0,3,x)
+@math limit(sin(x)/x,x,0)
+```
+
+Natural requests such as `find the derivative of x squared` are routed to the
+math tool by the agent policy. Successful calculus results are returned as
+LaTeX and rendered visually in both Chat and Console. The APK bundles KaTeX
+0.18.0 and its fonts, so formula rendering works offline and does not require
+another download. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+the KaTeX license attribution.
+
+## Device verification with ADB
+
+Use wireless ADB or USB ADB to install the debug APK without deleting the
+downloaded model:
+
+```bash
+ADB=/home/nobara-user/Android/Sdk/platform-tools/adb
+SERIAL=PHONE_SERIAL
+
+"$ADB" devices -l
+"$ADB" -s "$SERIAL" install -r -g app/build/outputs/apk/debug/app-debug.apk
+"$ADB" -s "$SERIAL" shell am force-stop com.ev.terminal
+"$ADB" -s "$SERIAL" shell am start -n com.ev.terminal/.MainActivity
+"$ADB" -s "$SERIAL" logcat -c
+"$ADB" -s "$SERIAL" logcat -d | rg -i 'AndroidRuntime|FATAL EXCEPTION|com\\.ev\\.terminal|EV_MODEL'
+```
+
+`install -r` preserves the app's private storage. Do not uninstall the app or
+clear its data when the goal is to keep the roughly 563 MB Qwen model. A model
+download can be verified from the app-private directory with:
+
+```bash
+"$ADB" -s "$SERIAL" shell run-as com.ev.terminal \
+  sha256sum files/.ev/models/qwen3.5-0.8b-q4_0-v2.gguf
+```
+
+The current branch was verified locally on an SM-A736B running Android 16:
+the APK installed successfully, the existing model remained present with the
+expected SHA-256, Chat displayed a typeset derivative, and Console displayed
+the matching successful `MATH` task event. The check completed without an
+app `FATAL EXCEPTION` in logcat.
 
 ## Architecture
 

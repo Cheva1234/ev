@@ -14,6 +14,7 @@ import com.ev.terminal.databinding.FragmentChatBinding
 import com.ev.terminal.harness.AgentRunner
 import com.ev.terminal.harness.EVRuntime
 import com.ev.terminal.harness.RuntimeState
+import com.ev.terminal.harness.TaskRecord
 import com.ev.terminal.harness.TaskOutcome
 import com.ev.terminal.storage.ChatEntry
 import com.ev.terminal.tools.ToolStatus
@@ -371,8 +372,23 @@ class ChatFragment : Fragment() {
             onChunk = stream,
             allowedTools = enabledTools
         ) { call ->
+            val taskId = runtime.state.nextTask()
+            runtime.eventBus.emit("task_start", "task" to taskId)
+            runtime.eventBus.emit("route", "task" to taskId, "family" to call.family)
+            runtime.eventBus.emit(
+                "tool",
+                "task" to taskId,
+                "name" to call.family.lowercase(),
+                "status" to call.result.status.name,
+                "duration_ms" to call.result.durationMs,
+                "summary" to call.result.summary
+            )
+            runtime.state.addTask(
+                TaskRecord(taskId, call.family, call.result.durationMs, call.result.status.name)
+            )
+            runtime.eventBus.emit("task_end", "task" to taskId, "status" to call.result.status.name)
             val outcome = TaskOutcome(
-                taskId = runtime.state.nextTask(),
+                taskId = taskId,
                 family = call.family,
                 result = call.result,
                 durationMs = call.result.durationMs

@@ -23,13 +23,29 @@ import org.commonmark.parser.Parser
 object MarkdownRenderer {
 
     private val parser: Parser = Parser.builder().build()
+    private val mathPattern = Regex("\\$\\$[\\s\\S]+?\\$\\$|\\$[^$\\n]+?\\$")
 
     fun render(markdown: String, context: android.content.Context): SpannableStringBuilder {
         val sb = SpannableStringBuilder()
-        val document = parser.parse(markdown)
+        val protectedMath = mutableListOf<ProtectedMath>()
+        val safeMarkdown = mathPattern.replace(markdown) { match ->
+            val placeholder = "EV_MATH_TOKEN_${protectedMath.size}"
+            protectedMath += ProtectedMath(placeholder, match.value)
+            placeholder
+        }
+        val document = parser.parse(safeMarkdown)
         renderNode(document, sb, context, 0)
+        protectedMath.forEach { math ->
+            var start = sb.indexOf(math.placeholder)
+            while (start >= 0) {
+                sb.replace(start, start + math.placeholder.length, math.source)
+                start = sb.indexOf(math.placeholder, start + math.source.length)
+            }
+        }
         return sb
     }
+
+    private data class ProtectedMath(val placeholder: String, val source: String)
 
     private fun renderNode(node: Node, sb: SpannableStringBuilder, context: android.content.Context, depth: Int) {
         when (node) {

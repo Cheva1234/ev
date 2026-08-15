@@ -56,3 +56,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## KaTeX
+
+EV bundles KaTeX 0.18.0 JavaScript, CSS, and font assets in the APK to render
+calculus results offline in the chat and console WebViews.
+
+- Project: <https://katex.org/>
+- Source package: <https://www.npmjs.com/package/katex>
+- License: MIT
+- License text: <https://github.com/KaTeX/KaTeX/blob/main/LICENSE>
